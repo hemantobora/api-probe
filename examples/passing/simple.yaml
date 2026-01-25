@@ -1,4 +1,5 @@
 # Simple test using httpbin.org (public API for testing)
+# Expected: ALL PASS ✓
 tests:
   - name: "Health Check"
     type: rest

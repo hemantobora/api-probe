@@ -1,4 +1,5 @@
-# Test with intentional failures
+# Test with intentional failures to demonstrate error reporting
+# Expected: FAILURES ✗
 tests:
   - name: "Should Pass"
     type: rest
@@ -10,7 +11,7 @@ tests:
     type: rest
     endpoint: "https://httpbin.org/status/200"
     validation:
-      status: 404  # Wrong - will fail
+      status: 404  # INTENTIONAL FAILURE: expecting 404 but gets 200
   
   - name: "Should Fail - Missing Field"
     type: rest
@@ -19,4 +20,4 @@ tests:
       status: 200
       body:
         present:
-          - "nonexistent_field"  # Will fail
+          - "nonexistent_field"  # INTENTIONAL FAILURE: field doesn't exist

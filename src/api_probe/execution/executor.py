@@ -1,5 +1,6 @@
 """Main test executor - orchestrates entire execution flow."""
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List
 
 from .context import ExecutionContext
@@ -62,19 +63,47 @@ class TestExecutor:
         """
         run_result = RunResult(run_index=run_index)
         
-        # Execute tests sequentially (groups handled separately)
+        # Execute tests sequentially (groups execute in parallel)
         for item in config.tests:
             if isinstance(item, Test):
                 test_result = self._execute_test(item, context)
                 run_result.test_results.append(test_result)
             elif isinstance(item, Group):
-                # TODO: Parallel execution for groups
-                # For now, execute sequentially
-                for test in item.tests:
-                    test_result = self._execute_test(test, context)
-                    run_result.test_results.append(test_result)
+                # Parallel execution for groups
+                group_results = self._execute_group(item, context)
+                run_result.test_results.extend(group_results)
         
         return run_result
+    
+    def _execute_group(self, group: Group, context: ExecutionContext) -> List[TestResult]:
+        """Execute tests in a group in parallel.
+        
+        Args:
+            group: Group of tests to execute in parallel
+            context: Execution context
+            
+        Returns:
+            List of test results (order preserved from group)
+        """
+        # Use ThreadPoolExecutor for parallel execution
+        with ThreadPoolExecutor(max_workers=len(group.tests)) as executor:
+            # Submit all tests
+            future_to_test = {
+                executor.submit(self._execute_test, test, context): test
+                for test in group.tests
+            }
+            
+            # Collect results in original order
+            results = []
+            for test in group.tests:
+                # Find the future for this test
+                for future, submitted_test in future_to_test.items():
+                    if submitted_test is test:
+                        result = future.result()
+                        results.append(result)
+                        break
+            
+            return results
     
     def _execute_test(self, test: Test, context: ExecutionContext) -> TestResult:
         """Execute a single test.

@@ -1,0 +1,89 @@
+# Verification Test Suite
+# Tests critical behaviors: parallel execution, sequential execution, variable isolation
+
+tests:
+  # Test 1: Sequential execution - verify order matters
+  - name: "Sequential Test 1 - Capture Variable"
+    type: rest
+    endpoint: "https://httpbin.org/uuid"
+    validation:
+      status: 200
+    output:
+      UUID1: "body.uuid"
+  
+  - name: "Sequential Test 2 - Use Variable from Test 1"
+    type: rest
+    endpoint: "https://httpbin.org/headers"
+    headers:
+      X-UUID-From-Previous: "${UUID1}"
+    validation:
+      status: 200
+      body:
+        present:
+          - "headers.X-Uuid-From-Previous"
+        equals:
+          headers.X-Uuid-From-Previous: "${UUID1}"
+  
+  - name: "Sequential Test 3 - Capture Different Variable"
+    type: rest
+    endpoint: "https://httpbin.org/uuid"
+    validation:
+      status: 200
+    output:
+      UUID2: "body.uuid"
+  
+  # Test 2: Parallel group - tests run simultaneously
+  - group:
+      tests:
+        - name: "Parallel A - Delay 1 sec"
+          type: rest
+          endpoint: "https://httpbin.org/delay/1"
+          validation:
+            status: 200
+          output:
+            PARALLEL_A_URL: "body.url"
+        
+        - name: "Parallel B - Delay 1 sec"
+          type: rest
+          endpoint: "https://httpbin.org/delay/1"
+          validation:
+            status: 200
+          output:
+            PARALLEL_B_URL: "body.url"
+        
+        - name: "Parallel C - Delay 1 sec"
+          type: rest
+          endpoint: "https://httpbin.org/delay/1"
+          validation:
+            status: 200
+          output:
+            PARALLEL_C_URL: "body.url"
+  
+  # Test 3: Verify variables from parallel group are available
+  - name: "Sequential After Parallel - Use Parallel Variables"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      from_parallel_a: "${PARALLEL_A_URL}"
+      from_parallel_b: "${PARALLEL_B_URL}"
+      from_sequential: "${UUID1}"
+    validation:
+      status: 200
+      body:
+        equals:
+          json.from_parallel_a: "${PARALLEL_A_URL}"
+          json.from_parallel_b: "${PARALLEL_B_URL}"
+          json.from_sequential: "${UUID1}"
+
+# Performance Note:
+# If parallel execution works correctly:
+# - The 3 delay tests should complete in ~1-2 seconds (not 3 seconds)
+# 
+# If sequential execution works correctly:
+# - Test 2 should successfully use UUID1 from Test 1
+# - Test after parallel should use variables from parallel tests
+#
+# Total expected time: ~3-4 seconds (not 6+ seconds)

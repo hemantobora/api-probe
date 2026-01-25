@@ -13,6 +13,8 @@ setup(
     install_requires=[
         "PyYAML>=6.0.1",
         "requests>=2.31.0",
+        "jsonpath-ng>=1.6.1",
+        "lxml>=5.1.0",
     ],
     entry_points={
         "console_scripts": [

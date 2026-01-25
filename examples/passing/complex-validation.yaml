@@ -195,7 +195,7 @@ tests:
           json.boolean_field: boolean
           json.array_field: array
           json.object_field: object
-          json.null_field: null
+          json.null_field: "null"  # IMPORTANT: Quote "null" to pass as string, not Python None
   
   # Test 7: Range validation with bounds
   - name: "Numeric Range Validation"

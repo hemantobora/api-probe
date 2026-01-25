@@ -1,0 +1,77 @@
+# Multi-Value Variables Example
+# Demonstrates parallel execution with position-based pairing
+#
+# Usage:
+#   export CLIENT_ID="client-123,client-456,client-789"
+#   export REGION="us-east,eu-west"
+#   ./run.sh examples/multi-value.yaml
+#
+# This creates 3 parallel runs:
+#   Run 1: CLIENT_ID=client-123, REGION=us-east
+#   Run 2: CLIENT_ID=client-456, REGION=eu-west
+#   Run 3: CLIENT_ID=client-789, REGION=eu-west (last value repeats)
+
+tests:
+  # Test 1: Variable substitution in endpoint
+  - name: "Health Check with Client ID"
+    type: rest
+    endpoint: "https://httpbin.org/headers"
+    headers:
+      X-Client-ID: "${CLIENT_ID}"
+      X-Region: "${REGION}"
+    validation:
+      status: 200
+      body:
+        present:
+          - "headers"
+          - "headers.X-Client-Id"
+          - "headers.X-Region"
+        # Verify headers were echoed correctly
+        equals:
+          headers.X-Client-Id: "${CLIENT_ID}"
+          headers.X-Region: "${REGION}"
+  
+  # Test 2: Variables in request body
+  - name: "POST with Client Context"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      clientId: "${CLIENT_ID}"
+      region: "${REGION}"
+      timestamp: "2024-01-01T00:00:00Z"
+    validation:
+      status: 200
+      body:
+        present:
+          - "json"
+          - "json.clientId"
+          - "json.region"
+        equals:
+          json.clientId: "${CLIENT_ID}"
+          json.region: "${REGION}"
+    output:
+      REQUEST_ID: "body.headers.X-Amzn-Trace-Id"
+  
+  # Test 3: Chained test using captured output
+  - name: "Verify Request ID Captured"
+    type: rest
+    endpoint: "https://httpbin.org/get"
+    headers:
+      X-Client-ID: "${CLIENT_ID}"
+      X-Previous-Request: "${REQUEST_ID}"
+    validation:
+      status: 200
+      body:
+        present:
+          - "headers.X-Client-Id"
+
+# Example Output (with multi-value variables):
+#
+# Run 1: CLIENT_ID=client-123, REGION=us-east
+# Run 2: CLIENT_ID=client-456, REGION=eu-west  
+# Run 3: CLIENT_ID=client-789, REGION=eu-west
+#
+# Each run is isolated - variables captured in Run 1 don't affect Run 2

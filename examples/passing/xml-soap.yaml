@@ -1,0 +1,55 @@
+# XML/SOAP Support Example
+# Note: Many public SOAP APIs are deprecated or require auth
+# This example demonstrates XML parsing with a REST XML endpoint
+
+tests:
+  # Test 1: REST API that returns XML
+  - name: "XML REST Response"
+    type: rest
+    endpoint: "https://httpbin.org/xml"
+    validation:
+      status: 200
+      headers:
+        contains:
+          Content-Type: "xml"
+      body:
+        # XPath: Extract from XML structure
+        # httpbin.org/xml returns a simple XML document
+        present:
+          - "//slide"
+          - "//slide/title"
+        type:
+          "//slide/title": string
+
+# XPath Notes:
+# - Use // for descendant search
+# - Use default: prefix for elements in default namespace (if present)
+# - [1] for first element (XPath is 1-indexed)
+# - Multiple matches return arrays
+#
+# Example XPath Patterns:
+# - "//elementName" - Find all elements
+# - "//parent/child" - Direct child
+# - "//element[@attribute='value']" - Attribute filter
+# - "//element[1]" - First element
+# - "//element/text()" - Text content only
+#
+# For SOAP APIs:
+# 1. Set proper Content-Type: "text/xml; charset=utf-8"
+# 2. Set SOAPAction header if required
+# 3. Use proper SOAP envelope in body
+# 4. Navigate through soap:Envelope/soap:Body/...
+# 5. Use default: prefix for default namespace elements
+#
+# Example SOAP Request Structure:
+# body: |
+#   <?xml version="1.0" encoding="utf-8"?>
+#   <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+#     <soap:Body>
+#       <YourMethod xmlns="http://your-namespace.com/">
+#         <param>value</param>
+#       </YourMethod>
+#     </soap:Body>
+#   </soap:Envelope>
+#
+# See docs/XML_SOAP_GUIDE.md for complete documentation

@@ -1,0 +1,142 @@
+# Advanced Features Example
+# Demonstrates: Advanced JSONPath and Parallel Group Execution
+
+tests:
+  # Test 1: Simple paths (dot notation - no jsonpath-ng needed)
+  - name: "Simple Path Extraction"
+    type: rest
+    endpoint: "https://httpbin.org/json"
+    validation:
+      status: 200
+      body:
+        present:
+          - "slideshow"
+          - "slideshow.title"
+          - "slideshow.slides"
+        equals:
+          slideshow.title: "Sample Slide Show"
+  
+  # Test 2: Parallel Group - Multiple requests executed simultaneously
+  - group:
+      tests:
+        - name: "Parallel Request 1 - JSON"
+          type: rest
+          endpoint: "https://httpbin.org/json"
+          validation:
+            status: 200
+            body:
+              present:
+                - "slideshow.author"
+        
+        - name: "Parallel Request 2 - UUID"
+          type: rest
+          endpoint: "https://httpbin.org/uuid"
+          validation:
+            status: 200
+            body:
+              present:
+                - "uuid"
+              matches:
+                uuid: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        
+        - name: "Parallel Request 3 - Headers"
+          type: rest
+          endpoint: "https://httpbin.org/headers"
+          validation:
+            status: 200
+            body:
+              present:
+                - "headers"
+              type:
+                headers: object
+  
+  # All 3 tests above run in PARALLEL (simultaneously)
+  # Then this test runs AFTER they all complete
+  - name: "Sequential After Parallel Group"
+    type: rest
+    endpoint: "https://httpbin.org/get"
+    validation:
+      status: 200
+      body:
+        present:
+          - "url"
+
+  # Test 3: Advanced JSONPath - Wildcards
+  # Demonstrates extracting all items from an array using [*]
+  - name: "Advanced JSONPath - Wildcards"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      items:
+        - id: 1
+          name: "Item One"
+        - id: 2
+          name: "Item Two"
+        - id: 3
+          name: "Item Three"
+    validation:
+      status: 200
+      body:
+        # Simple array access
+        equals:
+          json.items[0].id: 1
+          json.items[1].name: "Item Two"
+        
+        # Advanced: Extract all IDs using wildcard
+        # Path 'json.items[*].id' exists and returns [1, 2, 3]
+        present:
+          - "json.items[*].id"
+          - "json.items[*].name"
+
+  # Test 4: Performance demonstration with parallel group
+  # Without parallel: 5 seconds (5 x 1 second each)
+  # With parallel: ~1 second (all run simultaneously)
+  - group:
+      tests:
+        - name: "Delay Test 1"
+          type: rest
+          endpoint: "https://httpbin.org/delay/1"
+          validation:
+            status: 200
+        
+        - name: "Delay Test 2"
+          type: rest
+          endpoint: "https://httpbin.org/delay/1"
+          validation:
+            status: 200
+        
+        - name: "Delay Test 3"
+          type: rest
+          endpoint: "https://httpbin.org/delay/1"
+          validation:
+            status: 200
+        
+        - name: "Delay Test 4"
+          type: rest
+          endpoint: "https://httpbin.org/delay/1"
+          validation:
+            status: 200
+        
+        - name: "Delay Test 5"
+          type: rest
+          endpoint: "https://httpbin.org/delay/1"
+          validation:
+            status: 200
+  
+  # This test runs AFTER all 5 parallel tests complete
+  - name: "Final Sequential Test"
+    type: rest
+    endpoint: "https://httpbin.org/get"
+    validation:
+      status: 200
+
+# Performance Note:
+# The 5 delay tests above execute in parallel using ThreadPoolExecutor
+# Total time: ~1-2 seconds (instead of 5+ seconds sequentially)
+#
+# Advanced JSONPath Note:
+# Paths like 'items[*].id' use jsonpath-ng for extraction
+# They return arrays of values, but 'present' validator just checks existence

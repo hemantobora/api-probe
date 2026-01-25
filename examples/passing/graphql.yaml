@@ -1,0 +1,85 @@
+# GraphQL API Testing Example
+# Uses a simple GraphQL endpoint for testing
+
+tests:
+  # Test 1: Simple GraphQL query
+  - name: "GraphQL Query - Countries"
+    type: graphql
+    endpoint: "https://countries.trevorblades.com/"
+    query: |
+      {
+        countries(filter: {code: {eq: "US"}}) {
+          code
+          name
+          capital
+          emoji
+        }
+      }
+    validation:
+      status: 200
+      body:
+        present:
+          - "data"
+          - "data.countries"
+        type:
+          data.countries: array
+        # Ensure no errors in GraphQL response
+        absent:
+          - "errors"
+    output:
+      COUNTRY_CODE: "body.data.countries[0].code"
+  
+  # Test 2: GraphQL with variables
+  - name: "GraphQL Query with Variables"
+    type: graphql
+    endpoint: "https://countries.trevorblades.com/"
+    query: |
+      query GetCountry($code: ID!) {
+        country(code: $code) {
+          code
+          name
+          capital
+          currency
+        }
+      }
+    variables:
+      code: "JP"
+    validation:
+      status: 200
+      body:
+        present:
+          - "data.country"
+          - "data.country.name"
+          - "data.country.capital"
+        equals:
+          data.country.code: "JP"
+          data.country.name: "Japan"
+        type:
+          data.country.name: string
+        absent:
+          - "errors"
+  
+  # Test 3: Multiple countries
+  - name: "GraphQL - List Multiple Countries"
+    type: graphql
+    endpoint: "https://countries.trevorblades.com/"
+    query: |
+      {
+        countries(filter: {continent: {eq: "AS"}}) {
+          code
+          name
+        }
+      }
+    validation:
+      status: 200
+      body:
+        present:
+          - "data.countries"
+        type:
+          data.countries: array
+        absent:
+          - "errors"
+
+# Note: This example uses the public countries GraphQL API
+# No authentication required
+# API: https://countries.trevorblades.com/
