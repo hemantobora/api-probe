@@ -1,0 +1,38 @@
+# Simple test using httpbin.org (public API for testing)
+tests:
+  - name: "Health Check"
+    type: rest
+    endpoint: "https://httpbin.org/status/200"
+    validation:
+      status: 200
+  
+  - name: "Get JSON"
+    type: rest
+    endpoint: "https://httpbin.org/json"
+    validation:
+      status: 200
+      body:
+        present:
+          - "slideshow"
+          - "slideshow.title"
+        equals:
+          slideshow.title: "Sample Slide Show"
+  
+  - name: "Post Data"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      name: "test"
+      value: 123
+    validation:
+      status: 200
+      body:
+        present:
+          - "json"
+          - "json.name"
+        equals:
+          json.name: "test"
+          json.value: 123

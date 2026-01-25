@@ -1,0 +1,110 @@
+# Comprehensive test - all validation keywords
+tests:
+  # Test 1: Status validation
+  - name: "Status Check"
+    type: rest
+    endpoint: "https://httpbin.org/status/200"
+    validation:
+      status: 200
+  
+  # Test 2: Present, Equals, Type validators
+  - name: "JSON Response"
+    type: rest
+    endpoint: "https://httpbin.org/json"
+    validation:
+      status: 200
+      body:
+        present:
+          - "slideshow"
+          - "slideshow.title"
+          - "slideshow.slides"
+        equals:
+          slideshow.title: "Sample Slide Show"
+        type:
+          slideshow.title: string
+          slideshow.slides: array
+  
+  # Test 3: POST with body, output capture
+  - name: "Post and Capture"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      name: "test-user"
+      age: 25
+      active: true
+    validation:
+      status: 200
+      headers:
+        present:
+          - "Content-Type"
+        contains:
+          Content-Type: "json"
+      body:
+        present:
+          - "json"
+          - "json.name"
+          - "json.age"
+        equals:
+          json.name: "test-user"
+          json.age: 25
+          json.active: true
+        type:
+          json.name: string
+          json.age: integer
+          json.active: boolean
+    output:
+      POSTED_NAME: "body.json.name"
+  
+  # Test 4: Matches validator (regex)
+  - name: "UUID Response"
+    type: rest
+    endpoint: "https://httpbin.org/uuid"
+    validation:
+      status: 200
+      body:
+        present:
+          - "uuid"
+        matches:
+          uuid: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        type:
+          uuid: string
+  
+  # Test 5: Range validator
+  - name: "Delay Response"
+    type: rest
+    endpoint: "https://httpbin.org/delay/1"
+    validation:
+      status: 200
+  
+  # Test 6: Headers validation
+  - name: "Headers Echo"
+    type: rest
+    endpoint: "https://httpbin.org/headers"
+    headers:
+      X-Test-Header: "test-value"
+    validation:
+      status: 200
+      body:
+        present:
+          - "headers"
+          - "headers.X-Test-Header"
+        equals:
+          headers.X-Test-Header: "test-value"
+  
+  # Test 7: Absent validator (security check)
+  - name: "No Sensitive Data"
+    type: rest
+    endpoint: "https://httpbin.org/json"
+    validation:
+      status: 200
+      headers:
+        absent:
+          - "X-Internal-Token"
+          - "X-Debug-Info"
+      body:
+        absent:
+          - "password"
+          - "secret_key"

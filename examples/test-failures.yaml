@@ -1,0 +1,22 @@
+# Test with intentional failures
+tests:
+  - name: "Should Pass"
+    type: rest
+    endpoint: "https://httpbin.org/status/200"
+    validation:
+      status: 200
+  
+  - name: "Should Fail - Wrong Status"
+    type: rest
+    endpoint: "https://httpbin.org/status/200"
+    validation:
+      status: 404  # Wrong - will fail
+  
+  - name: "Should Fail - Missing Field"
+    type: rest
+    endpoint: "https://httpbin.org/json"
+    validation:
+      status: 200
+      body:
+        present:
+          - "nonexistent_field"  # Will fail
