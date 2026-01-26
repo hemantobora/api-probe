@@ -103,7 +103,8 @@ class ConfigParser:
             query=probe_dict.get('query'),
             variables=probe_dict.get('variables'),
             validation=validation,
-            output=probe_dict.get('output')
+            output=probe_dict.get('output'),
+            delay=probe_dict.get('delay')
         )
     
     def _parse_group(self, group_dict: Dict[str, Any]) -> Group:

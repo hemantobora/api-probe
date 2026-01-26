@@ -21,6 +21,18 @@ docker run --rm \
   api-probe:latest /configs/passing/simple.yaml
 ```
 
+### Validate Configs
+
+Validate your configuration and environment variables inside Docker:
+
+```bash
+docker run --rm \
+  -v $(pwd)/configs:/configs \
+  api-probe:latest validate /configs/tests.yaml
+```
+
+See [VALIDATION.md](VALIDATION.md) and [VALIDATE_COMMAND.md](VALIDATE_COMMAND.md) for details.
+
 ### With Environment Variables
 
 ```bash

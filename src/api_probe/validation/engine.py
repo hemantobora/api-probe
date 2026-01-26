@@ -11,6 +11,7 @@ from ..validation.matches import MatchesValidator
 from ..validation.type import TypeValidator
 from ..validation.contains import ContainsValidator
 from ..validation.range import RangeValidator
+from ..validation.length import LengthValidator
 from ..validation.extractor import PathExtractor
 
 
@@ -30,6 +31,7 @@ class ValidationEngine:
         self.type_validator = TypeValidator(self.extractor)
         self.contains_validator = ContainsValidator(self.extractor)
         self.range_validator = RangeValidator(self.extractor)
+        self.length_validator = LengthValidator(self.extractor)
     
     def validate(
         self,
@@ -128,6 +130,9 @@ class ValidationEngine:
         
         if 'range' in body_spec:
             errors.extend(self.range_validator.validate(test_name, response, body_spec['range']))
+        
+        if 'length' in body_spec:
+            errors.extend(self.length_validator.validate(test_name, response, body_spec['length']))
         
         return errors
     

@@ -55,14 +55,16 @@ if [ $# -gt 0 ]; then
     exit $EXIT_CODE
 else
     # No arguments - show help
-    echo "Usage: ./run.sh <config-file>"
+    echo "Usage:"
+    echo "  ./run.sh <config-file>              Run probes"
+    echo "  ./run.sh validate <config-file>     Validate config"
     echo
     echo "Examples:"
-    echo "  ./run.sh examples/simple.yaml"
-    echo "  ./run.sh /path/to/config.yaml"
+    echo "  ./run.sh examples/passing/simple.yaml"
+    echo "  ./run.sh validate examples/passing/simple.yaml"
     echo
     echo -e "${YELLOW}Virtual environment is activated.${NC}"
     echo "You can now run commands directly:"
     echo "  python -m api_probe.cli <config-file>"
-    echo "  or: api-probe <config-file>"
+    echo "  python -m api_probe.cli validate <config-file>"
 fi

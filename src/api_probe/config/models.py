@@ -25,6 +25,7 @@ class Probe:
     variables: Optional[Dict[str, Any]] = None  # GraphQL only
     validation: Optional[Validation] = None
     output: Optional[Dict[str, str]] = None
+    delay: Optional[float] = None  # Delay in seconds before executing probe
 
 
 @dataclass

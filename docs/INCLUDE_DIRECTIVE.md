@@ -8,6 +8,52 @@ The `!include` directive allows you to load content from external files into you
 - Better organization and maintainability
 - Version controlling payloads separately from probes
 
+## Where You Can Use !include
+
+The `!include` directive works **anywhere** in your YAML config:
+
+### ✅ Request Bodies (REST)
+```yaml
+body: !include includes/payload.json
+```
+
+### ✅ GraphQL Queries
+```yaml
+query: !include includes/query.graphql
+```
+
+### ✅ GraphQL Variables (entire object)
+```yaml
+variables: !include includes/variables.json
+```
+
+### ✅ GraphQL Variables (nested)
+```yaml
+variables:
+  input: !include includes/item-input.json
+  filters: !include includes/filters.json
+```
+
+### ✅ Inside Included Files
+```yaml
+# config.yaml
+body: !include includes/outer.json
+
+# includes/outer.json
+{
+  "nested": !include "inner.json"  # Nested includes work!
+}
+```
+
+### ❌ Where It Doesn't Work
+```yaml
+# Cannot include entire arrays
+probes: !include probes.yaml  # ❌
+
+# Cannot include validation specs  
+validation: !include validation.yaml  # ❌
+```
+
 ## Basic Usage
 
 ```yaml
@@ -220,6 +266,43 @@ probes:
     # Different values for each execution!
 ```
 
+### 5. GraphQL Variables from External Files
+
+**File: includes/item-input.json**
+```json
+{
+  "name": "${ITEM_NAME}",
+  "description": "A complex item with many fields",
+  "specifications": {
+    "weight": 2.5,
+    "dimensions": {
+      "length": 30,
+      "width": 20,
+      "height": 10
+    }
+  },
+  "tags": ["tag1", "tag2", "tag3"]
+}
+```
+
+**Config:**
+```yaml
+probes:
+  - name: "Create Item"
+    type: graphql
+    endpoint: "https://api.example.com/graphql"
+    query: |
+      mutation CreateItem($input: ItemInput!) {
+        createItem(input: $input) {
+          id
+          name
+        }
+      }
+    variables:
+      input: !include includes/item-input.json
+      # Variables ARE substituted in included files!
+```
+
 ## Best Practices
 
 ### 1. Organize by Category
@@ -289,12 +372,14 @@ See:
 
 2. **Only for specific fields**
    Valid locations:
-   - `body: !include ...`
-   - `query: !include ...`
+   - `body: !include ...` ✅
+   - `query: !include ...` ✅
+   - `variables: !include ...` ✅ (entire variables object)
+   - `variables.input: !include ...` ✅ (nested in variables)
    
    Invalid:
-   - `probes: !include ...`  # Cannot include entire probe arrays
-   - `validation: !include ...`  # Cannot include validation specs
+   - `probes: !include ...` ❌ (cannot include entire probe arrays)
+   - `validation: !include ...` ❌ (cannot include validation specs)
 
 3. **File must exist at load time**
    - Files are loaded when config is parsed

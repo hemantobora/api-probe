@@ -154,6 +154,11 @@ class ProbeExecutor:
             Probe result
         """
         try:
+            # Apply delay if specified
+            if probe.delay is not None and probe.delay > 0:
+                import time
+                time.sleep(probe.delay)
+            
             # Substitute variables in probe
             substitutor = VariableSubstitutor(context.variables)
             probe_substituted = self._substitute_probe(probe, substitutor)
@@ -253,7 +258,8 @@ class ProbeExecutor:
             query=substitutor.substitute(probe.query) if probe.query else None,
             variables=substitutor.substitute(probe.variables) if probe.variables else None,
             validation=probe.validation,  # Don't substitute validation spec structure
-            output=probe.output
+            output=probe.output,
+            delay=probe.delay
         )
     
     def _validation_to_dict(self, validation: Any, substitutor: VariableSubstitutor) -> Dict[str, Any]:

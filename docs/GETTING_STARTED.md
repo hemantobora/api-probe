@@ -158,6 +158,16 @@ probes:
 - `1` - One or more probes failed (verbose output)
 - `2` - Configuration error
 
+## Validate Your Config
+
+Before running probes in CI, validate your configuration and environment variables:
+
+```bash
+./run.sh validate path/to/config.yaml
+```
+
+Learn more in [VALIDATION.md](VALIDATION.md) and command details in [VALIDATE_COMMAND.md](VALIDATE_COMMAND.md).
+
 ## Project Structure
 
 ```

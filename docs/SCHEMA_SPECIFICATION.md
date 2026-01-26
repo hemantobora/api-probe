@@ -167,6 +167,7 @@ A Probe represents a single API call with optional validation and output capture
     varName: any                         # Value with ${VAR} support
   
   # Common fields
+  delay: number                          # Optional: Seconds to wait before executing
   validation:                            # Optional: Response validation
     <validation-spec>
   output:                                # Optional: Variable capture
@@ -192,6 +193,19 @@ A Probe represents a single API call with optional validation and output capture
   - `"https://api.example.com/users"`
   - `"https://api.example.com/${REGION}/data"`
   - `"${BASE_URL}/auth"`
+
+#### `delay` (optional)
+- **Type:** Number (float)
+- **Description:** Number of seconds to wait before executing the probe
+- **Default:** None (no delay)
+- **Use Cases:**
+  - Rate limiting compliance
+  - Waiting for async operations
+  - Timing-dependent behavior testing
+- **Examples:**
+  - `delay: 2` - Wait 2 seconds
+  - `delay: 0.5` - Wait half a second
+  - `delay: 0` - No delay (ignored)
 
 ---
 
@@ -366,6 +380,48 @@ GraphQL probes support queries, mutations, and variables.
     name: "${REPO_NAME}"
 ```
 
+### GraphQL Variables: Complex Objects and Arrays
+
+GraphQL `variables` support nested objects and arrays and are sent verbatim in the request payload. Variable substitution `${VAR}` works inside these structures, and single-token substitutions preserve type (e.g., numbers remain numbers).
+
+**Nested Object Example:**
+```yaml
+variables:
+  input:
+    name: "John Doe"
+    address:
+      city: "San Francisco"
+      country: "USA"
+```
+
+**Array Example:**
+```yaml
+variables:
+  filters:
+    category: "electronics"
+    tags:
+      - "portable"
+      - "featured"
+```
+
+**With Substitution:**
+```yaml
+executions:
+  - vars:
+      - CATEGORY: "books"
+      - LIMIT: "20"
+
+probes:
+  - type: graphql
+    variables:
+      query: "harry potter"
+      limit: "${LIMIT}"       # Becomes number 20
+      filters:
+        category: "${CATEGORY}"
+```
+
+See also: Variable Substitution section for where variables are allowed.
+
 ---
 
 ## XML/SOAP API Probes
@@ -439,13 +495,27 @@ validation:
 | `type` | Type checking | Body | `type: { age: integer }` |
 | `contains` | Substring/element check | Headers, Body | `contains: { name: "John" }` |
 | `range` | Numeric bounds | Body | `range: { age: [0, 120] }` |
+| `length` | Array/string length | Body | `length: { items: [1, 100] }` |
 
 ### Status Validation
 
 ```yaml
 validation:
-  status: 200    # Exact match required
+  status: 200        # Exact match
+  # OR
+  status: "2xx"      # Any 2xx status (200-299)
+  status: "3xx"      # Any 3xx status (300-399)
+  status: "4xx"      # Any 4xx status (400-499)
+  status: "5xx"      # Any 5xx status (500-599)
 ```
+
+**Pattern matching (case-insensitive):**
+- `"2xx"` or `"2XX"` - Success responses (200-299)
+- `"3xx"` or `"3XX"` - Redirects (300-399)
+- `"4xx"` or `"4XX"` - Client errors (400-499)
+- `"5xx"` or `"5XX"` - Server errors (500-599)
+
+**Note:** Patterns must be strings (use quotes)
 
 ### Header Validation
 
@@ -573,6 +643,50 @@ validation:
       user.score: [0, null]       # Min only (no maximum)
       user.balance: [null, 1000]  # Max only (no minimum)
 ```
+
+**Length:**
+```yaml
+validation:
+  body:
+    length:
+      items: 5              # Exactly 5 items
+      results: [1, 100]     # Between 1-100 items
+      name: [0, 50]         # String length 0-50 chars
+      tags: [3, 10]         # Array with 3-10 elements
+```
+
+Validates array or string length. Supports exact length or range [min, max].
+
+#### Root-Level Arrays (`$`)
+
+When the response body itself is an array (not wrapped in an object), use `$` to reference the root:
+
+```yaml
+validation:
+  body:
+    # Root is an array
+    type:
+      "$": array
+
+    # Validate array length
+    length:
+      "$": [1, 100]
+
+    # Validate first element fields
+    present:
+      - "$[0].id"
+      - "$[0].name"
+
+    # Validate specific values
+    equals:
+      "$[0].id": 1
+      "$[1].name": "Item 2"
+```
+
+Path quick reference for root arrays:
+- `$` — entire root array
+- `$[0]` — first element
+- `$[0].id` — field of first element
 
 ### Variable Substitution in Validation
 
@@ -941,6 +1055,10 @@ probes:
 
 ## Version History
 
+- **v2.1.0** (2025-01-26)
+  - Added delay field for probes
+  - Added length validator for arrays and strings
+  
 - **v2.0.0** (2025-01-26)
   - Added executions block
   - Added variable substitution in validation
