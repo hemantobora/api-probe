@@ -1,6 +1,6 @@
-# Simple test using httpbin.org (public API for testing)
+# Simple probe using httpbin.org (public API for probing)
 # Expected: ALL PASS ✓
-tests:
+probes:
   - name: "Health Check"
     type: rest
     endpoint: "https://httpbin.org/status/200"

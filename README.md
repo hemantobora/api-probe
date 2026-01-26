@@ -8,9 +8,11 @@
 
 ✅ REST & GraphQL Support  
 ✅ XML/SOAP Support (XPath)  
-✅ Multi-Value Variables (parallel test runs)  
-✅ Variable Substitution (`${VAR}`)  
-✅ Output Variable Capture (chain tests)  
+✅ Multiple Execution Contexts (test different users/accounts)  
+✅ Variable Substitution in requests AND validations  
+✅ Output Variable Capture (chain probes)  
+✅ Parallel Group Execution  
+✅ Include Directive (!include) for external files  
 ✅ Rich Validations (status, headers, body)  
 ✅ Silent Success / Verbose Failure  
 ✅ Docker-First, CI/CD Native  
@@ -22,6 +24,10 @@
 ```bash
 # One command - auto-setup and run
 ./run.sh examples/passing/simple.yaml
+
+# Run all examples
+chmod +x run-examples.sh
+./run-examples.sh
 ```
 
 ### Docker
@@ -39,18 +45,30 @@ docker run --rm \
 ## Example
 
 ```yaml
-tests:
+executions:
+  - name: "Production User"
+    vars:
+      - ACCOUNT: "123456789"
+      - API_KEY: "${PROD_API_KEY}"  # From environment
+  
+  - name: "Staging User"
+    vars:
+      - ACCOUNT: "987654321"
+      - API_KEY: "${STAGING_API_KEY}"
+
+probes:
   - name: "Login"
     type: rest
     endpoint: "${BASE_URL}/auth"
     method: POST
     headers:
       Content-Type: "application/json"
-    body:
-      username: "${USERNAME}"
-      password: "${PASSWORD}"
+    body: !include includes/login-body.json  # External file
     validation:
       status: 200
+      body:
+        equals:
+          account_id: "${ACCOUNT}"  # Variable substitution in validation!
     output:
       TOKEN: "body.access_token"
   
@@ -65,45 +83,122 @@ tests:
         present: ["id", "email"]
 ```
 
-## Multi-Value Variables (Parallel Testing)
+## Multiple Execution Contexts
 
-Test multiple contexts in one run:
+Test different user accounts, regions, or environments in one run:
 
-```bash
-# Environment
-export CLIENT_ID="client1,client2,client3"
-export REGION="us-east,eu-west"
+```yaml
+executions:
+  - name: "US East User"
+    vars:
+      - CLIENT_ID: "client-123"
+      - REGION: "us-east-1"
+  
+  - name: "EU West User"
+    vars:
+      - CLIENT_ID: "client-456"
+      - REGION: "eu-west-1"
 
-# Creates 3 parallel runs with position-based pairing
-docker run --rm \
-  -v $(pwd)/configs:/configs \
-  -e CLIENT_ID="client1,client2,client3" \
-  -e REGION="us-east,eu-west" \
-  api-probe /configs/test.yaml
+probes:
+  - name: "API Test"
+    endpoint: "https://api.example.com/${REGION}/data"
+    headers:
+      X-Client: "${CLIENT_ID}"
+    validation:
+      body:
+        equals:
+          region: "${REGION}"  # Validates against execution-specific value
 ```
 
-See [examples/passing/multi-value.yaml](examples/passing/multi-value.yaml) for details.
+Each execution runs independently with isolated variables.
+
+See [examples/passing/executions-block.yaml](examples/passing/executions-block.yaml) for details.
+
+## Parallel Groups
+
+Run probes in parallel for faster execution:
+
+```yaml
+probes:
+  - name: "Sequential Test"
+    endpoint: "https://api.example.com/test"
+  
+  # All probes in group run in parallel
+  - group:
+      probes:
+        - name: "Parallel Test 1"
+          endpoint: "https://api.example.com/delay/2"
+        - name: "Parallel Test 2"
+          endpoint: "https://api.example.com/delay/2"
+        - name: "Parallel Test 3"
+          endpoint: "https://api.example.com/delay/2"
+  # Group completes in ~2 seconds instead of 6 seconds
+```
+
+See [examples/passing/groups-parallel.yaml](examples/passing/groups-parallel.yaml) for details.
+
+## Include Directive
+
+Keep large request bodies in separate files:
+
+```yaml
+probes:
+  - name: "Create User"
+    type: rest
+    endpoint: "https://api.example.com/users"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body: !include includes/user-profile.json
+    validation:
+      status: 201
+```
+
+See [examples/passing/include-directive.yaml](examples/passing/include-directive.yaml) for details.
 
 ## Documentation
 
-- **[Getting Started](docs/GETTING_STARTED.md)** - Installation and basic usage
-- **[Schema Reference](docs/schema-specification.md)** - Complete YAML syntax
-- **[Docker Usage](docs/DOCKER.md)** - Container usage and CI/CD integration
-- **[XML/SOAP Guide](docs/XML_SOAP_GUIDE.md)** - XPath expressions and SOAP testing
+- **[GETTING_STARTED.md](docs/GETTING_STARTED.md)** - Installation and basic usage
+- **[SCHEMA_SPECIFICATION.md](docs/SCHEMA_SPECIFICATION.md)** - Complete YAML syntax
+- **[DOCKER.md](docs/DOCKER.md)** - Container usage and CI/CD integration
+- **[XML_SOAP_GUIDE.md](docs/XML_SOAP_GUIDE.md)** - XPath expressions and SOAP testing
+- **[INCLUDE_DIRECTIVE.md](docs/INCLUDE_DIRECTIVE.md)** - YAML include directive usage
 
 ## Examples
 
 ### Passing Examples (Expected: ✓ Silent Success)
-- [simple.yaml](examples/passing/simple.yaml) - Basic REST API tests
+- [simple.yaml](examples/passing/simple.yaml) - Basic REST API probes
 - [comprehensive.yaml](examples/passing/comprehensive.yaml) - All validation keywords
 - [complex-validation.yaml](examples/passing/complex-validation.yaml) - Advanced patterns
 - [graphql.yaml](examples/passing/graphql.yaml) - GraphQL API testing
 - [xml-soap.yaml](examples/passing/xml-soap.yaml) - XML/SOAP with XPath
-- [multi-value.yaml](examples/passing/multi-value.yaml) - Parallel execution
+- [executions-block.yaml](examples/passing/executions-block.yaml) - Multiple execution contexts
+- [multi-context.yaml](examples/passing/multi-context.yaml) - Multi-user testing
+- [no-executions.yaml](examples/passing/no-executions.yaml) - Single run with env vars
+- [groups-parallel.yaml](examples/passing/groups-parallel.yaml) - Parallel group execution
+- [include-directive.yaml](examples/passing/include-directive.yaml) - External file includes
 - [advanced-features.yaml](examples/passing/advanced-features.yaml) - JSONPath + parallel groups
 
 ### Failing Examples (Expected: ✗ Verbose Errors)
-- [test-failures.yaml](examples/failing/test-failures.yaml) - Intentional failures for testing
+- [test-failures.yaml](examples/failing/test-failures.yaml) - Basic intentional failures
+- [validation-failures.yaml](examples/failing/validation-failures.yaml) - All validator failures
+- [variable-validation-failures.yaml](examples/failing/variable-validation-failures.yaml) - Variable validation errors
+- [group-failures.yaml](examples/failing/group-failures.yaml) - Failures in parallel groups
+- [execution-names-in-reports.yaml](examples/failing/execution-names-in-reports.yaml) - Execution names in failure output
+- [multiple-execution-failures.yaml](examples/failing/multiple-execution-failures.yaml) - Different failures per execution
+- [auto-generated-names-failures.yaml](examples/failing/auto-generated-names-failures.yaml) - Auto-generated execution names
+
+## Running All Examples
+
+```bash
+# Set executable permission
+chmod +x run-examples.sh
+
+# Run all passing and failing examples
+./run-examples.sh
+```
+
+This will run all 15 passing examples and 7 failing examples with proper environment variables.
 
 ## CI/CD Integration
 
@@ -113,7 +208,8 @@ See [examples/passing/multi-value.yaml](examples/passing/multi-value.yaml) for d
   run: |
     docker run --rm \
       -v ${{ github.workspace }}/configs:/configs \
-      -e API_KEY="${{ secrets.API_KEY }}" \
+      -e PROD_API_KEY="${{ secrets.PROD_API_KEY }}" \
+      -e STAGING_API_KEY="${{ secrets.STAGING_API_KEY }}" \
       api-probe:latest /configs/tests.yaml
 ```
 
@@ -122,7 +218,8 @@ See [examples/passing/multi-value.yaml](examples/passing/multi-value.yaml) for d
 - task: api-tests
   image: api-probe-image
   params:
-    API_KEY: ((api-key))
+    PROD_API_KEY: ((prod-api-key))
+    STAGING_API_KEY: ((staging-api-key))
   run:
     path: api-probe
     args: ["/configs/tests.yaml"]
@@ -147,7 +244,7 @@ See [GETTING_STARTED.md](docs/GETTING_STARTED.md) for details.
 
 ## Status
 
-**Version:** 0.1.0  
+**Version:** 0.2.0  
 **Status:** Production Ready
 
 ## License

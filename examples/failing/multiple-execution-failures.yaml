@@ -1,0 +1,111 @@
+# Multiple Failures Across Executions
+# Shows how different executions can have different failures
+
+executions:
+  - name: "User A - All Tests Pass"
+    vars:
+      - USER_ID: "12345"
+      - ACCOUNT: "123456789"
+      - REGION: "us-east-1"
+      - EXPECTED_REGION: "us-east-1"  # Correct
+      - MIN_AGE: 0
+      - MAX_AGE: 120
+  
+  - name: "User B - Some Tests Fail"
+    vars:
+      - USER_ID: "67890"
+      - ACCOUNT: "987654321"
+      - REGION: "eu-west-1"
+      - EXPECTED_REGION: "us-west-1"  # Wrong - will fail
+      - MIN_AGE: 0
+      - MAX_AGE: 120
+  
+  - name: "User C - Multiple Failures"
+    vars:
+      - USER_ID: "11111"
+      - ACCOUNT: "555555555"
+      - REGION: "ap-south-1"
+      - EXPECTED_REGION: "wrong-region"  # Wrong - will fail
+      - MIN_AGE: 200  # Wrong - will fail range validation
+      - MAX_AGE: 50
+
+probes:
+  # Probe 1: Region validation (fails for User B and User C)
+  - name: "Check Region"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      region: "${REGION}"
+      user_id: "${USER_ID}"
+    validation:
+      status: 200
+      body:
+        equals:
+          json.region: "${EXPECTED_REGION}"
+  
+  # Probe 2: Age range validation (fails for User C only)
+  - name: "Validate Age Range"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      age: 25
+      user_id: "${USER_ID}"
+    validation:
+      status: 200
+      body:
+        range:
+          json.age: ["${MIN_AGE}", "${MAX_AGE}"]
+  
+  # Probe 3: Always passes for all executions
+  - name: "Basic Health Check"
+    type: rest
+    endpoint: "https://httpbin.org/status/200"
+    validation:
+      status: 200
+
+# Expected Output:
+#
+# ============================================================
+# VALIDATION FAILURES
+# ============================================================
+#
+# User B - Some Tests Fail
+# ------------------------------------------------------------
+# Probe: Check Region
+#   Endpoint: https://httpbin.org/post
+#   ✗ Field 'json.region': expected 'us-west-1', got 'eu-west-1'
+#     Field: json.region
+#     Expected: us-west-1
+#     Got: eu-west-1
+#
+# User C - Multiple Failures
+# ------------------------------------------------------------
+# Probe: Check Region
+#   Endpoint: https://httpbin.org/post
+#   ✗ Field 'json.region': expected 'wrong-region', got 'ap-south-1'
+#     Field: json.region
+#     Expected: wrong-region
+#     Got: ap-south-1
+#
+# Probe: Validate Age Range
+#   Endpoint: https://httpbin.org/post
+#   ✗ Value 25 is outside range [200, 50]
+#     Field: json.age
+#     Expected: [200, 50]
+#     Got: 25
+#
+# ============================================================
+# SUMMARY
+#   Total Runs: 3
+#   Failed Runs: 2/3
+#   Total Probes: 9
+#   Failed Probes: 3/9
+# ============================================================
+#
+# Note: User A has no failures, so it doesn't appear in the output

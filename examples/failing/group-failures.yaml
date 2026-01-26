@@ -1,0 +1,74 @@
+# Group Failures Example
+# Probes failures within parallel groups
+
+probes:
+  # Probe 1: Passing test before group
+  - name: "Passing Test Before Group"
+    type: rest
+    endpoint: "https://httpbin.org/status/200"
+    validation:
+      status: 200
+  
+  # Group 1: Mixed success and failures in parallel
+  - group:
+      probes:
+        - name: "Group Test - Pass"
+          type: rest
+          endpoint: "https://httpbin.org/status/200"
+          validation:
+            status: 200
+        
+        - name: "Group Test - Fail Status"
+          type: rest
+          endpoint: "https://httpbin.org/status/200"
+          validation:
+            status: 404  # FAIL: expects 404 but gets 200
+        
+        - name: "Group Test - Fail Body"
+          type: rest
+          endpoint: "https://httpbin.org/json"
+          validation:
+            status: 200
+            body:
+              equals:
+                slideshow.title: "Wrong Title"  # FAIL: wrong value
+  
+  # Probe 2: Sequential test after group
+  - name: "Sequential After Failed Group"
+    type: rest
+    endpoint: "https://httpbin.org/get"
+    validation:
+      status: 200
+  
+  # Group 2: All failures
+  - group:
+      probes:
+        - name: "Group All Fail - Test 1"
+          type: rest
+          endpoint: "https://httpbin.org/status/200"
+          validation:
+            status: 500  # FAIL
+        
+        - name: "Group All Fail - Test 2"
+          type: rest
+          endpoint: "https://httpbin.org/json"
+          validation:
+            status: 200
+            body:
+              present:
+                - "nonexistent.field"  # FAIL
+        
+        - name: "Group All Fail - Test 3"
+          type: rest
+          endpoint: "https://httpbin.org/uuid"
+          validation:
+            status: 200
+            body:
+              type:
+                uuid: integer  # FAIL: uuid is string
+
+# Expected: 5 failures total
+# - 2 failures in Group 1 (probes run in parallel)
+# - 3 failures in Group 2 (probes run in parallel)
+# - 1 passing probe before groups
+# - 1 passing probe between groups

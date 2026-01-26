@@ -9,7 +9,7 @@ warnings.filterwarnings('ignore', category=Warning, module='urllib3')
 
 from .config.loader import load_config
 from .config.parser import ConfigParser
-from .execution.executor import TestExecutor
+from .execution.executor import ProbeExecutor
 from .reporting.reporter import Reporter
 
 
@@ -29,8 +29,8 @@ def main():
         parser = ConfigParser()
         config = parser.parse(config_dict)
         
-        # Execute tests
-        executor = TestExecutor()
+        # Execute probes
+        executor = ProbeExecutor()
         result = executor.execute(config)
         
         # Report results

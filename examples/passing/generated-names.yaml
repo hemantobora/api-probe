@@ -1,0 +1,37 @@
+# Generated Names Example
+# When execution name is not provided, a random name is generated
+
+executions:
+  - vars:  # No name provided - will generate like "awesome-paris"
+      - ACCOUNT: "111111111"
+      - CLIENT_ID: "client-1"
+  
+  - name: "Custom Named Run"  # Explicit name provided
+    vars:
+      - ACCOUNT: "222222222"
+      - CLIENT_ID: "client-2"
+  
+  - vars:  # No name - will generate like "beautiful-tokyo"
+      - ACCOUNT: "333333333"
+      - CLIENT_ID: "client-3"
+
+probes:
+  - name: "Test with Account"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      account: "${ACCOUNT}"
+      client: "${CLIENT_ID}"
+    validation:
+      status: 200
+      body:
+        equals:
+          json.account: "${ACCOUNT}"
+
+# Expected Output Names:
+# - Run 1: Something like "awesome-paris" (generated)
+# - Run 2: "Custom Named Run" (provided)
+# - Run 3: Something like "elegant-london" (generated)

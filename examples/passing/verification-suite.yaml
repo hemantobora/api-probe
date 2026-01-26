@@ -1,8 +1,9 @@
-# Verification Test Suite
+# Verification Probe Suite
 # Tests critical behaviors: parallel execution, sequential execution, variable isolation
 
-tests:
-  # Test 1: Sequential execution - verify order matters
+# No executions block - single run with env vars
+probes:
+  # Probe 1: Sequential execution - verify order matters
   - name: "Sequential Test 1 - Capture Variable"
     type: rest
     endpoint: "https://httpbin.org/uuid"
@@ -22,7 +23,7 @@ tests:
         present:
           - "headers.X-Uuid-From-Previous"
         equals:
-          headers.X-Uuid-From-Previous: "${UUID1}"
+          headers.X-Uuid-From-Previous: "${UUID1}"  # Variable substitution in validation!
   
   - name: "Sequential Test 3 - Capture Different Variable"
     type: rest
@@ -32,9 +33,9 @@ tests:
     output:
       UUID2: "body.uuid"
   
-  # Test 2: Parallel group - tests run simultaneously
+  # Probe 2: Parallel group - probes run simultaneously
   - group:
-      tests:
+      probes:
         - name: "Parallel A - Delay 1 sec"
           type: rest
           endpoint: "https://httpbin.org/delay/1"
@@ -59,7 +60,7 @@ tests:
           output:
             PARALLEL_C_URL: "body.url"
   
-  # Test 3: Verify variables from parallel group are available
+  # Probe 3: Verify variables from parallel group are available
   - name: "Sequential After Parallel - Use Parallel Variables"
     type: rest
     endpoint: "https://httpbin.org/post"
@@ -74,7 +75,7 @@ tests:
       status: 200
       body:
         equals:
-          json.from_parallel_a: "${PARALLEL_A_URL}"
+          json.from_parallel_a: "${PARALLEL_A_URL}"  # Variable substitution!
           json.from_parallel_b: "${PARALLEL_B_URL}"
           json.from_sequential: "${UUID1}"
 

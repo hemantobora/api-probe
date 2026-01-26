@@ -1,0 +1,65 @@
+# Auto-Generated Names in Reports
+# All executions use auto-generated names
+
+executions:
+  # Execution 1 - no name (will generate like "awesome-paris")
+  - vars:
+      - CLIENT_ID: "client-001"
+      - EXPECTED_STATUS: "active"
+  
+  # Execution 2 - no name (will generate like "beautiful-tokyo")
+  - vars:
+      - CLIENT_ID: "client-002"
+      - EXPECTED_STATUS: "wrong-status"  # Will fail
+  
+  # Execution 3 - no name (will generate like "elegant-london")
+  - vars:
+      - CLIENT_ID: "client-003"
+      - EXPECTED_STATUS: "wrong-status"  # Will fail
+
+probes:
+  - name: "Check Status"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      client_id: "${CLIENT_ID}"
+      status: "active"
+    validation:
+      status: 200
+      body:
+        equals:
+          json.status: "${EXPECTED_STATUS}"
+
+# Expected Output (with different random generated names each run):
+#
+# ============================================================
+# VALIDATION FAILURES
+# ============================================================
+#
+# beautiful-tokyo
+# ------------------------------------------------------------
+# Probe: Check Status
+#   Endpoint: https://httpbin.org/post
+#   ✗ Field 'json.status': expected 'wrong-status', got 'active'
+#
+# elegant-london
+# ------------------------------------------------------------
+# Probe: Check Status
+#   Endpoint: https://httpbin.org/post
+#   ✗ Field 'json.status': expected 'wrong-status', got 'active'
+#
+# ============================================================
+# SUMMARY
+#   Total Runs: 3
+#   Failed Runs: 2/3
+#   Total Probes: 3
+#   Failed Probes: 2/3
+# ============================================================
+#
+# Note: 
+# - Each run gets a unique generated name
+# - Names are like "awesome-paris", "beautiful-tokyo", etc.
+# - First execution (with correct validation) doesn't appear in failures

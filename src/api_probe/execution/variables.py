@@ -2,7 +2,7 @@
 
 import os
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 
 class VariableSubstitutor:
@@ -60,46 +60,10 @@ class VariableSubstitutor:
         return self.PATTERN.sub(replacer, text)
 
 
-def parse_env_vars() -> Dict[str, List[str]]:
-    """Parse environment variables, detecting multi-value vars.
+def get_env_variables() -> Dict[str, str]:
+    """Get all environment variables as a dictionary.
     
     Returns:
-        Dictionary mapping var names to list of values
+        Dictionary of environment variables
     """
-    result = {}
-    
-    for key, value in os.environ.items():
-        # Split by comma (simple approach - no quote handling yet)
-        values = [v.strip() for v in value.split(',')]
-        result[key] = values
-    
-    return result
-
-
-def create_execution_contexts(env_vars: Dict[str, List[str]]) -> List[Dict[str, str]]:
-    """Create execution contexts with position-based pairing.
-    
-    Args:
-        env_vars: Environment variables with multi-value support
-        
-    Returns:
-        List of variable dictionaries (one per run)
-    """
-    # Handle empty env vars
-    if not env_vars:
-        return [{}]
-    
-    # Find max value count
-    max_count = max(len(values) for values in env_vars.values())
-    
-    # Create contexts with position-based pairing
-    contexts = []
-    for i in range(max_count):
-        context = {}
-        for key, values in env_vars.items():
-            # Use index or last value if out of range
-            value_index = min(i, len(values) - 1)
-            context[key] = values[value_index]
-        contexts.append(context)
-    
-    return contexts
+    return dict(os.environ)

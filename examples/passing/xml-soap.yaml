@@ -2,8 +2,8 @@
 # Note: Many public SOAP APIs are deprecated or require auth
 # This example demonstrates XML parsing with a REST XML endpoint
 
-tests:
-  # Test 1: REST API that returns XML
+probes:
+  # Probe 1: REST API that returns XML
   - name: "XML REST Response"
     type: rest
     endpoint: "https://httpbin.org/xml"
@@ -14,24 +14,38 @@ tests:
           Content-Type: "xml"
       body:
         # XPath: Extract from XML structure
-        # httpbin.org/xml returns a simple XML document
+        # httpbin.org/xml returns a simple XML document with multiple slides
         present:
+          - "//slideshow"
           - "//slide"
           - "//slide/title"
+        
+        # Get first slide's title (use [1] for first element)
         type:
-          "//slide/title": string
+          "//slide[1]/title": string
+        
+        # Verify first slide title value
+        equals:
+          "//slide[1]/title": "Wake up to WonderWidgets!"
+        
+        # When path matches multiple elements, it returns array
+        # So "//slide/title" returns array of all titles
+        type:
+          "//slideshow/@title": string  # Attribute returns single value
 
 # XPath Notes:
 # - Use // for descendant search
-# - Use default: prefix for elements in default namespace (if present)
-# - [1] for first element (XPath is 1-indexed)
-# - Multiple matches return arrays
+# - Use [1] to get first element (XPath is 1-indexed)
+# - Use [2] for second element, etc.
+# - Without index, multiple matches return arrays
+# - Attributes (@attr) typically return single values
 #
 # Example XPath Patterns:
-# - "//elementName" - Find all elements
+# - "//elementName" - Find all elements (may return array)
+# - "//elementName[1]" - First element only (returns single value)
 # - "//parent/child" - Direct child
 # - "//element[@attribute='value']" - Attribute filter
-# - "//element[1]" - First element
+# - "//element/@attribute" - Extract attribute value
 # - "//element/text()" - Text content only
 #
 # For SOAP APIs:

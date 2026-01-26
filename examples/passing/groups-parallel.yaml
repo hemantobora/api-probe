@@ -1,0 +1,101 @@
+# Parallel Groups Example
+# Demonstrates parallel execution within groups
+
+probes:
+  # Probe 1: Sequential probe before groups
+  - name: "Sequential Before Groups"
+    type: rest
+    endpoint: "https://httpbin.org/get"
+    validation:
+      status: 200
+    output:
+      REQUEST_ID_1: "body.headers.X-Amzn-Trace-Id"
+  
+  # Group 1: Small parallel group
+  - group:
+      probes:
+        - name: "Group 1 - Test A"
+          type: rest
+          endpoint: "https://httpbin.org/delay/1"
+          validation:
+            status: 200
+        
+        - name: "Group 1 - Test B"
+          type: rest
+          endpoint: "https://httpbin.org/delay/1"
+          validation:
+            status: 200
+  
+  # Probe 2: Sequential probe between groups
+  - name: "Sequential Between Groups"
+    type: rest
+    endpoint: "https://httpbin.org/uuid"
+    validation:
+      status: 200
+    output:
+      UUID: "body.uuid"
+  
+  # Group 2: Larger parallel group with different API calls
+  - group:
+      probes:
+        - name: "Group 2 - Get JSON"
+          type: rest
+          endpoint: "https://httpbin.org/json"
+          validation:
+            status: 200
+            body:
+              present:
+                - "slideshow"
+        
+        - name: "Group 2 - Get Headers"
+          type: rest
+          endpoint: "https://httpbin.org/headers"
+          validation:
+            status: 200
+            body:
+              present:
+                - "headers"
+        
+        - name: "Group 2 - Get IP"
+          type: rest
+          endpoint: "https://httpbin.org/ip"
+          validation:
+            status: 200
+            body:
+              present:
+                - "origin"
+        
+        - name: "Group 2 - Get User Agent"
+          type: rest
+          endpoint: "https://httpbin.org/user-agent"
+          validation:
+            status: 200
+            body:
+              present:
+                - "user-agent"
+  
+  # Probe 3: Sequential probe after groups
+  - name: "Sequential After Groups"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      uuid_from_earlier: "${UUID}"
+      request_id: "${REQUEST_ID_1}"
+    validation:
+      status: 200
+      body:
+        equals:
+          json.uuid_from_earlier: "${UUID}"
+
+# Execution Flow:
+# 1. Sequential Before Groups (1 probe)
+# 2. Group 1 (2 probes in parallel) - should take ~1 second, not 2
+# 3. Sequential Between Groups (1 probe)
+# 4. Group 2 (4 probes in parallel) - all execute simultaneously
+# 5. Sequential After Groups (1 probe)
+#
+# Total time: ~3-4 seconds if parallel works
+# Would be: ~6+ seconds if sequential

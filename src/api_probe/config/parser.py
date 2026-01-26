@@ -2,14 +2,14 @@
 
 from typing import Any, Dict, List, Union
 
-from .models import Config, Test, Group, Validation
+from .models import Config, Probe, Group, Validation, Execution
 
 
 class ConfigParser:
-    """Parses raw configuration dicts into model objects."""
+    """Parses configuration dictionaries into model objects."""
     
     def parse(self, config_dict: Dict[str, Any]) -> Config:
-        """Parse configuration dict into Config object.
+        """Parse configuration dictionary.
         
         Args:
             config_dict: Raw configuration dictionary
@@ -20,100 +20,118 @@ class ConfigParser:
         Raises:
             ValueError: If configuration is invalid
         """
-        if 'tests' not in config_dict:
-            raise ValueError("Configuration must have 'tests' field")
+        if 'probes' not in config_dict:
+            raise ValueError("Configuration must have 'probes' field")
         
-        tests = []
-        for item in config_dict['tests']:
+        probes = []
+        for item in config_dict['probes']:
             if 'group' in item:
-                # It's a group
-                tests.append(self._parse_group(item['group']))
+                probes.append(self._parse_group(item['group']))
             else:
-                # It's a test
-                tests.append(self._parse_test(item))
+                probes.append(self._parse_probe(item))
         
-        return Config(tests=tests)
+        # Parse executions if present
+        executions = []
+        if 'executions' in config_dict:
+            executions_list = config_dict['executions']
+            if executions_list:  # Not empty
+                for exec_dict in executions_list:
+                    executions.append(self._parse_execution(exec_dict))
+        
+        return Config(probes=probes, executions=executions)
     
-    def _parse_test(self, test_dict: Dict[str, Any]) -> Test:
-        """Parse test dictionary into Test object.
+    def _parse_execution(self, exec_dict: Dict[str, Any]) -> Execution:
+        """Parse execution definition.
         
         Args:
-            test_dict: Raw test dictionary
+            exec_dict: Execution dictionary
             
         Returns:
-            Test object
+            Execution object
+        """
+        name = exec_dict.get('name')
+        vars_list = exec_dict.get('vars', [])
+        
+        return Execution(name=name, vars=vars_list)
+    
+    def _parse_probe(self, probe_dict: Dict[str, Any]) -> Probe:
+        """Parse probe definition.
+        
+        Args:
+            probe_dict: Probe dictionary
+            
+        Returns:
+            Probe object
             
         Raises:
-            ValueError: If test is invalid
+            ValueError: If probe definition is invalid
         """
-        # Validate required fields
-        if 'name' not in test_dict:
-            raise ValueError("Test must have 'name' field")
-        if 'type' not in test_dict:
-            raise ValueError(f"Test '{test_dict.get('name')}' must have 'type' field")
-        if 'endpoint' not in test_dict:
-            raise ValueError(f"Test '{test_dict.get('name')}' must have 'endpoint' field")
+        # Required fields
+        if 'name' not in probe_dict:
+            raise ValueError("Probe must have 'name' field")
+        if 'type' not in probe_dict:
+            raise ValueError(f"Probe '{probe_dict['name']}' must have 'type' field")
+        if 'endpoint' not in probe_dict:
+            raise ValueError(f"Probe '{probe_dict['name']}' must have 'endpoint' field")
         
-        test_type = test_dict['type']
-        if test_type not in ['rest', 'graphql']:
-            raise ValueError(f"Test type must be 'rest' or 'graphql', got '{test_type}'")
+        probe_type = probe_dict['type']
         
-        # GraphQL requires query
-        if test_type == 'graphql' and 'query' not in test_dict:
-            raise ValueError(f"GraphQL test '{test_dict['name']}' must have 'query' field")
+        # Type-specific validation
+        if probe_type == 'graphql' and 'query' not in probe_dict:
+            raise ValueError(f"GraphQL probe '{probe_dict['name']}' must have 'query' field")
         
         # REST with body requires Content-Type
-        if test_type == 'rest' and 'body' in test_dict and test_dict['body'] is not None:
-            headers = test_dict.get('headers', {})
+        if probe_type == 'rest' and 'body' in probe_dict:
+            headers = probe_dict.get('headers', {})
             if not any(k.lower() == 'content-type' for k in headers.keys()):
                 raise ValueError(
-                    f"REST test '{test_dict['name']}' with body must have Content-Type header"
+                    f"REST probe '{probe_dict['name']}' with body must have Content-Type header"
                 )
         
-        # Parse validation if present
+        # Parse validation
         validation = None
-        if 'validation' in test_dict:
-            validation = self._parse_validation(test_dict['validation'])
+        if 'validation' in probe_dict:
+            validation = self._parse_validation(probe_dict['validation'])
         
-        return Test(
-            name=test_dict['name'],
-            type=test_dict['type'],
-            endpoint=test_dict['endpoint'],
-            method=test_dict.get('method', 'GET'),
-            headers=test_dict.get('headers'),
-            body=test_dict.get('body'),
-            query=test_dict.get('query'),
-            variables=test_dict.get('variables'),
+        return Probe(
+            name=probe_dict['name'],
+            type=probe_type,
+            endpoint=probe_dict['endpoint'],
+            method=probe_dict.get('method', 'GET'),
+            headers=probe_dict.get('headers'),
+            body=probe_dict.get('body'),
+            query=probe_dict.get('query'),
+            variables=probe_dict.get('variables'),
             validation=validation,
-            output=test_dict.get('output')
+            output=probe_dict.get('output')
         )
     
     def _parse_group(self, group_dict: Dict[str, Any]) -> Group:
-        """Parse group dictionary into Group object.
+        """Parse group definition.
         
         Args:
-            group_dict: Raw group dictionary
+            group_dict: Group dictionary
             
         Returns:
             Group object
         """
-        if 'tests' not in group_dict:
-            raise ValueError("Group must have 'tests' field")
+        probes = []
+        for probe_dict in group_dict.get('probes', []):
+            probes.append(self._parse_probe(probe_dict))
         
-        tests = [self._parse_test(t) for t in group_dict['tests']]
-        return Group(tests=tests)
+        return Group(probes=probes)
     
-    def _parse_validation(self, val_dict: Dict[str, Any]) -> Validation:
-        """Parse validation dictionary into Validation object.
+    def _parse_validation(self, validation_dict: Dict[str, Any]) -> Validation:
+        """Parse validation specification.
         
         Args:
-            val_dict: Raw validation dictionary
+            validation_dict: Validation dictionary
             
         Returns:
             Validation object
         """
         return Validation(
-            status=val_dict.get('status'),
-            headers=val_dict.get('headers'),
-            body=val_dict.get('body')
+            status=validation_dict.get('status'),
+            headers=validation_dict.get('headers'),
+            body=validation_dict.get('body')
         )

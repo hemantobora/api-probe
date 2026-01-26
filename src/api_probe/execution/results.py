@@ -1,4 +1,4 @@
-"""Result models for test execution."""
+"""Result models for probe execution."""
 
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -7,9 +7,9 @@ from ..validation.base import ValidationError
 
 
 @dataclass
-class TestResult:
-    """Result of executing a single test."""
-    test_name: str
+class ProbeResult:
+    """Result of executing a single probe."""
+    probe_name: str
     success: bool
     errors: List[ValidationError] = field(default_factory=list)
     skipped: bool = False
@@ -21,17 +21,18 @@ class TestResult:
 class RunResult:
     """Result of a single execution run (one context)."""
     run_index: int
-    test_results: List[TestResult] = field(default_factory=list)
+    run_name: str = ""  # Name of the execution (from executions block or generated)
+    probe_results: List[ProbeResult] = field(default_factory=list)
     
     @property
     def success(self) -> bool:
-        """Check if all tests in this run succeeded."""
-        return all(t.success for t in self.test_results)
+        """Check if all probes in this run succeeded."""
+        return all(p.success for p in self.probe_results)
     
     @property
-    def failed_tests(self) -> List[TestResult]:
-        """Get list of failed tests."""
-        return [t for t in self.test_results if not t.success and not t.skipped]
+    def failed_probes(self) -> List[ProbeResult]:
+        """Get list of failed probes."""
+        return [p for p in self.probe_results if not p.success and not p.skipped]
 
 
 @dataclass
@@ -55,11 +56,11 @@ class ExecutionResult:
         return sum(1 for r in self.run_results if not r.success)
     
     @property
-    def total_tests(self) -> int:
-        """Total number of tests across all runs."""
-        return sum(len(r.test_results) for r in self.run_results)
+    def total_probes(self) -> int:
+        """Total number of probes across all runs."""
+        return sum(len(r.probe_results) for r in self.run_results)
     
     @property
-    def failed_tests(self) -> int:
-        """Total number of failed tests across all runs."""
-        return sum(len(r.failed_tests) for r in self.run_results)
+    def failed_probes(self) -> int:
+        """Total number of failed probes across all runs."""
+        return sum(len(r.failed_probes) for r in self.run_results)

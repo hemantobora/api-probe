@@ -1,18 +1,24 @@
-# Multi-Value Variables Example
-# Demonstrates parallel execution with position-based pairing
-#
-# Usage:
-#   export CLIENT_ID="client-123,client-456,client-789"
-#   export REGION="us-east,eu-west"
-#   ./run.sh examples/multi-value.yaml
-#
-# This creates 3 parallel runs:
-#   Run 1: CLIENT_ID=client-123, REGION=us-east
-#   Run 2: CLIENT_ID=client-456, REGION=eu-west
-#   Run 3: CLIENT_ID=client-789, REGION=eu-west (last value repeats)
+# Multi-Context Execution Example
+# Probes multiple user contexts in a single run
+
+executions:
+  - name: "User Context A"
+    vars:
+      - CLIENT_ID: "client-123"
+      - REGION: "us-east"
+  
+  - name: "User Context B"
+    vars:
+      - CLIENT_ID: "client-456"
+      - REGION: "eu-west"
+  
+  - name: "User Context C"
+    vars:
+      - CLIENT_ID: "client-789"
+      - REGION: "ap-south"
 
 probes:
-  # Probe 1: Variable substitution in endpoint
+  # Probe 1: Variable substitution in endpoint and headers
   - name: "Health Check with Client ID"
     type: rest
     endpoint: "https://httpbin.org/headers"
@@ -23,10 +29,9 @@ probes:
       status: 200
       body:
         present:
-          - "headers"
           - "headers.X-Client-Id"
           - "headers.X-Region"
-        # Verify headers were echoed correctly
+        # Verify headers were echoed correctly with variable substitution
         equals:
           headers.X-Client-Id: "${CLIENT_ID}"
           headers.X-Region: "${REGION}"
@@ -46,9 +51,9 @@ probes:
       status: 200
       body:
         present:
-          - "json"
           - "json.clientId"
           - "json.region"
+        # Variable substitution in validation
         equals:
           json.clientId: "${CLIENT_ID}"
           json.region: "${REGION}"
@@ -68,10 +73,11 @@ probes:
         present:
           - "headers.X-Client-Id"
 
-# Example Output (with multi-value variables):
-#
-# Run 1: CLIENT_ID=client-123, REGION=us-east
-# Run 2: CLIENT_ID=client-456, REGION=eu-west  
-# Run 3: CLIENT_ID=client-789, REGION=eu-west
+# Expected Behavior:
+# Each execution runs independently with its own variables:
+# 
+# User Context A: CLIENT_ID=client-123, REGION=us-east
+# User Context B: CLIENT_ID=client-456, REGION=eu-west  
+# User Context C: CLIENT_ID=client-789, REGION=ap-south
 #
 # Each run is isolated - variables captured in Run 1 don't affect Run 2

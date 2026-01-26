@@ -1,0 +1,25 @@
+# No Executions Block Example
+# When executions block is absent, runs once with environment variables
+
+# No executions block - uses environment variables directly
+probes:
+  - name: "Simple Test"
+    type: rest
+    endpoint: "https://httpbin.org/headers"
+    headers:
+      X-API-Key: "${API_KEY}"
+      X-Client-ID: "${CLIENT_ID}"
+    validation:
+      status: 200
+      body:
+        # Variable substitution in validation
+        equals:
+          headers.X-Api-Key: "${API_KEY}"
+          headers.X-Client-Id: "${CLIENT_ID}"
+
+# Usage:
+# export API_KEY="my-secret-key"
+# export CLIENT_ID="my-client-id"
+# ./run.sh examples/passing/no-executions.yaml
+#
+# Result: Single run with variables from environment

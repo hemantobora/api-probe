@@ -1,0 +1,97 @@
+# !include Directive Example
+# Demonstrates including external files for bodies and queries
+
+probes:
+  # Probe 1: Include JSON body from file
+  - name: "Login with Included Body"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body: !include ../includes/login-body.json
+    validation:
+      status: 200
+      body:
+        present:
+          - "json.username"
+          - "json.password"
+        equals:
+          json.username: "testuser"
+          json.password: "testpass123"
+          json.remember_me: true
+  
+  # Probe 2: Include larger JSON body
+  - name: "Update Profile with Included Body"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body: !include ../includes/user-profile.json
+    validation:
+      status: 200
+      body:
+        present:
+          - "json.name"
+          - "json.email"
+          - "json.address"
+          - "json.address.city"
+        equals:
+          json.name: "John Doe"
+          json.email: "john.doe@example.com"
+          json.address.city: "San Francisco"
+        type:
+          json.age: integer
+          json.address: object
+          json.preferences: object
+  
+  # Probe 3: GraphQL query (inline, not included)
+  - name: "GraphQL with Inline Query"
+    type: graphql
+    endpoint: "https://countries.trevorblades.com/"
+    query: |
+      {
+        countries(filter: {code: {eq: "US"}}) {
+          code
+          name
+          capital
+        }
+      }
+    validation:
+      status: 200
+      body:
+        present:
+          - "data.countries"
+        type:
+          data.countries: array
+        absent:
+          - "errors"
+  
+  # Probe 4: Multiple includes in one config
+  - name: "Another Login Test"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body: !include ../includes/login-body.json
+    validation:
+      status: 200
+      body:
+        type:
+          json.username: string
+          json.remember_me: boolean
+
+# Benefits of !include:
+# - Keep request bodies in separate files
+# - Reuse common payloads across tests
+# - Better organization for large payloads
+# - Easier to maintain and version control
+# - Supports JSON, XML, GraphQL, plain text
+#
+# Syntax: body: !include path/to/file.ext
+# Path is relative to the config file location
+#
+# Note: Paths use ../ because this file is in examples/passing/
+# and includes are in examples/includes/

@@ -1,6 +1,6 @@
-# Complex validation test - demonstrates advanced validation patterns
-tests:
-  # Test 1: Complex nested JSON validation
+# Complex validation probe - demonstrates advanced validation patterns
+probes:
+  # Probe 1: Complex nested JSON validation
   - name: "Nested JSON Validation"
     type: rest
     endpoint: "https://httpbin.org/json"
@@ -41,7 +41,7 @@ tests:
           - "api_key"
           - "secret"
   
-  # Test 2: POST with complex body and validation
+  # Probe 2: POST with complex body and validation
   - name: "Complex POST Validation"
     type: rest
     endpoint: "https://httpbin.org/post"
@@ -105,7 +105,7 @@ tests:
       USER_NAME: "body.json.user.name"
       USER_EMAIL: "body.json.user.email"
   
-  # Test 3: UUID and pattern matching
+  # Probe 3: UUID and pattern matching
   - name: "UUID and Pattern Validation"
     type: rest
     endpoint: "https://httpbin.org/uuid"
@@ -120,7 +120,7 @@ tests:
         matches:
           uuid: "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
   
-  # Test 4: Headers validation with patterns
+  # Probe 4: Headers validation with patterns
   - name: "Complex Headers Validation"
     type: rest
     endpoint: "https://httpbin.org/response-headers"
@@ -139,7 +139,7 @@ tests:
         contains:
           Content-Type: "application/json"
   
-  # Test 5: Multiple validations on same response
+  # Probe 5: Multiple validations on same response
   - name: "Multi-Layer Validation"
     type: rest
     endpoint: "https://httpbin.org/get"
@@ -169,7 +169,7 @@ tests:
         matches:
           url: "^https://httpbin\\.org/get$"
   
-  # Test 6: Type validation across different types
+  # Probe 6: Type validation across different types
   - name: "Type System Validation"
     type: rest
     endpoint: "https://httpbin.org/post"
@@ -195,9 +195,9 @@ tests:
           json.boolean_field: boolean
           json.array_field: array
           json.object_field: object
-          json.null_field: "null"  # IMPORTANT: Quote "null" to pass as string, not Python None
+          json.null_field: None  # IMPORTANT: Quote "null" to pass as string, to represent null or None type
   
-  # Test 7: Range validation with bounds
+  # Probe 7: Range validation with bounds
   - name: "Numeric Range Validation"
     type: rest
     endpoint: "https://httpbin.org/post"
@@ -218,7 +218,7 @@ tests:
           json.score: [0, 100]         # Percentage
           json.count: [1, null]        # At least 1, no upper limit
   
-  # Test 8: Security validation - ensure sensitive data absent
+  # Probe 8: Security validation - ensure sensitive data absent
   - name: "Security Validation"
     type: rest
     endpoint: "https://httpbin.org/get"

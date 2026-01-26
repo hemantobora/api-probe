@@ -1,19 +1,21 @@
 # Variable Isolation Test
 # Verifies that output variables don't leak between execution contexts
-#
-# Usage:
-#   export CLIENT_ID="client-A,client-B,client-C"
-#   ./run.sh examples/passing/isolation-test.yaml
-#
-# Expected Behavior:
-# - Run 1: CLIENT_ID=client-A, captures TOKEN_A
-# - Run 2: CLIENT_ID=client-B, captures TOKEN_B  
-# - Run 3: CLIENT_ID=client-C, captures TOKEN_C
-#
-# Each run should ONLY see its own captured variables!
 
-tests:
-  # Test 1: Capture a variable specific to this context
+executions:
+  - name: "Context A"
+    vars:
+      - CLIENT_ID: "client-A"
+  
+  - name: "Context B"
+    vars:
+      - CLIENT_ID: "client-B"
+  
+  - name: "Context C"
+    vars:
+      - CLIENT_ID: "client-C"
+
+probes:
+  # Probe 1: Capture a variable specific to this context
   - name: "Capture Context-Specific Token"
     type: rest
     endpoint: "https://httpbin.org/post"
@@ -31,7 +33,7 @@ tests:
     output:
       MY_TOKEN: "body.json.request_id"
   
-  # Test 2: Use the captured variable - should be context-specific
+  # Probe 2: Use the captured variable - should be context-specific
   - name: "Use Context Token"
     type: rest
     endpoint: "https://httpbin.org/post"
@@ -58,11 +60,11 @@ tests:
 # Verification:
 # 
 # If isolation works correctly:
-# ✓ Run 1: MY_TOKEN = "client-A-token", CLIENT_ID = "client-A"
-# ✓ Run 2: MY_TOKEN = "client-B-token", CLIENT_ID = "client-B"
-# ✓ Run 3: MY_TOKEN = "client-C-token", CLIENT_ID = "client-C"
+# ✓ Context A: MY_TOKEN = "client-A-token", CLIENT_ID = "client-A"
+# ✓ Context B: MY_TOKEN = "client-B-token", CLIENT_ID = "client-B"
+# ✓ Context C: MY_TOKEN = "client-C-token", CLIENT_ID = "client-C"
 #
 # If isolation FAILS (variable leakage):
-# ✗ Run 2 might use Run 1's token
-# ✗ Run 3 might use Run 1's or Run 2's token
+# ✗ Context B might use Context A's token
+# ✗ Context C might use Context A's or B's token
 # ✗ Validation would fail: token wouldn't match client_id

@@ -1,6 +1,6 @@
 # Test with intentional failures to demonstrate error reporting
 # Expected: FAILURES ✗
-tests:
+probes:
   - name: "Should Pass"
     type: rest
     endpoint: "https://httpbin.org/status/200"

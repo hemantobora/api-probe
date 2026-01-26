@@ -74,7 +74,7 @@ path: "//custom:element"
 ### SOAP Request/Response
 
 ```yaml
-tests:
+probes:
   - name: "SOAP API Call"
     type: rest
     endpoint: "http://example.com/soap"
@@ -105,7 +105,7 @@ tests:
 ### XML REST API
 
 ```yaml
-tests:
+probes:
   - name: "XML REST Endpoint"
     type: rest
     endpoint: "http://example.com/api/data.xml"
@@ -244,7 +244,7 @@ output:
   USER_NAME: "body.//user/name"
 ```
 
-Then use in subsequent tests:
+Then use in subsequent probes:
 ```yaml
 - name: "Use Extracted ID"
   type: rest

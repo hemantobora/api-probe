@@ -1,8 +1,8 @@
 # Advanced Features Example
 # Demonstrates: Advanced JSONPath and Parallel Group Execution
 
-tests:
-  # Test 1: Simple paths (dot notation - no jsonpath-ng needed)
+probes:
+  # Probe 1: Simple paths (dot notation - no jsonpath-ng needed)
   - name: "Simple Path Extraction"
     type: rest
     endpoint: "https://httpbin.org/json"
@@ -16,9 +16,9 @@ tests:
         equals:
           slideshow.title: "Sample Slide Show"
   
-  # Test 2: Parallel Group - Multiple requests executed simultaneously
+  # Probe 2: Parallel Group - Multiple requests executed simultaneously
   - group:
-      tests:
+      probes:
         - name: "Parallel Request 1 - JSON"
           type: rest
           endpoint: "https://httpbin.org/json"
@@ -50,8 +50,8 @@ tests:
               type:
                 headers: object
   
-  # All 3 tests above run in PARALLEL (simultaneously)
-  # Then this test runs AFTER they all complete
+  # All 3 probes above run in PARALLEL (simultaneously)
+  # Then this probe runs AFTER they all complete
   - name: "Sequential After Parallel Group"
     type: rest
     endpoint: "https://httpbin.org/get"
@@ -61,7 +61,7 @@ tests:
         present:
           - "url"
 
-  # Test 3: Advanced JSONPath - Wildcards
+  # Probe 3: Advanced JSONPath - Wildcards
   # Demonstrates extracting all items from an array using [*]
   - name: "Advanced JSONPath - Wildcards"
     type: rest
@@ -91,11 +91,11 @@ tests:
           - "json.items[*].id"
           - "json.items[*].name"
 
-  # Test 4: Performance demonstration with parallel group
+  # Probe 4: Performance demonstration with parallel group
   # Without parallel: 5 seconds (5 x 1 second each)
   # With parallel: ~1 second (all run simultaneously)
   - group:
-      tests:
+      probes:
         - name: "Delay Test 1"
           type: rest
           endpoint: "https://httpbin.org/delay/1"
@@ -134,7 +134,7 @@ tests:
       status: 200
 
 # Performance Note:
-# The 5 delay tests above execute in parallel using ThreadPoolExecutor
+# The 5 delay probes above execute in parallel using ThreadPoolExecutor
 # Total time: ~1-2 seconds (instead of 5+ seconds sequentially)
 #
 # Advanced JSONPath Note:

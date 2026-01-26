@@ -1,8 +1,8 @@
-# GraphQL API Testing Example
-# Uses a simple GraphQL endpoint for testing
+# GraphQL API Probing Example
+# Uses a simple GraphQL endpoint for probing
 
-tests:
-  # Test 1: Simple GraphQL query
+probes:
+  # Probe 1: Simple GraphQL query
   - name: "GraphQL Query - Countries"
     type: graphql
     endpoint: "https://countries.trevorblades.com/"
@@ -29,7 +29,7 @@ tests:
     output:
       COUNTRY_CODE: "body.data.countries[0].code"
   
-  # Test 2: GraphQL with variables
+  # Probe 2: GraphQL with variables
   - name: "GraphQL Query with Variables"
     type: graphql
     endpoint: "https://countries.trevorblades.com/"
@@ -59,7 +59,7 @@ tests:
         absent:
           - "errors"
   
-  # Test 3: Multiple countries
+  # Probe 3: Multiple countries
   - name: "GraphQL - List Multiple Countries"
     type: graphql
     endpoint: "https://countries.trevorblades.com/"

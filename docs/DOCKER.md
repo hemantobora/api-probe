@@ -10,7 +10,7 @@ docker build -t api-probe:latest .
 docker build -t api-probe:0.1.0 .
 ```
 
-## Running Tests
+## Running Probes
 
 ### Basic Usage
 
@@ -144,8 +144,8 @@ jobs:
 
 ## Exit Codes
 
-- `0` - All tests passed (silent, no output)
-- `1` - One or more tests failed (verbose output)
+- `0` - All probes passed (silent, no output)
+- `1` - One or more probes failed (verbose output)
 - `2` - Configuration error or runtime exception
 
 ## Advanced Usage
@@ -202,7 +202,7 @@ docker run --rm \
 ## Security Best Practices
 
 1. **Never hardcode secrets in configs** - Use environment variables
-2. **Use env files for local testing** - Keep them out of git
+2. **Use env files for local probing** - Keep them out of git
 3. **Use CI/CD secrets** - For production credentials
 4. **Run as non-root** - Container already configured
 5. **Use readonly volumes** - If configs don't need modification:
@@ -240,9 +240,9 @@ docker run --rm \
 See the `examples/` directory for sample configurations:
 
 ### Passing Examples (Expected: ✓ Silent Success)
-- `passing/simple.yaml` - Basic REST API tests
+- `passing/simple.yaml` - Basic REST API probes
 - `passing/comprehensive.yaml` - All validation keywords
-- `passing/graphql.yaml` - GraphQL API testing
+- `passing/graphql.yaml` - GraphQL API probing
 - `passing/multi-value.yaml` - Parallel execution with multi-value variables
 - `passing/complex-validation.yaml` - Advanced validation patterns
 - `passing/advanced-features.yaml` - JSONPath wildcards and parallel groups

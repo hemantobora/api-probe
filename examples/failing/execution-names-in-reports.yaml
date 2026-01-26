@@ -1,0 +1,77 @@
+# Execution Names in Failure Reports
+# Demonstrates how execution names appear in failure output
+
+executions:
+  - name: "Production User A (Explicit Name)"
+    vars:
+      - USER_ID: "prod-12345"
+      - EXPECTED_VALUE: "wrong-value-A"
+  
+  - name: "Staging User (Explicit Name)"
+    vars:
+      - USER_ID: "staging-67890"
+      - EXPECTED_VALUE: "wrong-value-B"
+  
+  # No name provided - will auto-generate like "awesome-paris"
+  - vars:
+      - USER_ID: "test-99999"
+      - EXPECTED_VALUE: "wrong-value-C"
+
+probes:
+  # Probe 1: This will fail for all executions
+  - name: "Validation Failure Test"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      user_id: "${USER_ID}"
+      actual_value: "correct-value"
+    validation:
+      status: 200
+      body:
+        # This will fail because expected values are wrong
+        equals:
+          json.actual_value: "${EXPECTED_VALUE}"
+
+# Expected Output:
+#
+# ============================================================
+# VALIDATION FAILURES
+# ============================================================
+#
+# Production User A (Explicit Name)
+# ------------------------------------------------------------
+# Probe: Validation Failure Test
+#   Endpoint: https://httpbin.org/post
+#   ✗ Field 'json.actual_value': expected 'wrong-value-A', got 'correct-value'
+#     Field: json.actual_value
+#     Expected: wrong-value-A
+#     Got: correct-value
+#
+# Staging User (Explicit Name)
+# ------------------------------------------------------------
+# Probe: Validation Failure Test
+#   Endpoint: https://httpbin.org/post
+#   ✗ Field 'json.actual_value': expected 'wrong-value-B', got 'correct-value'
+#     Field: json.actual_value
+#     Expected: wrong-value-B
+#     Got: correct-value
+#
+# awesome-paris (Auto-Generated Name)
+# ------------------------------------------------------------
+# Probe: Validation Failure Test
+#   Endpoint: https://httpbin.org/post
+#   ✗ Field 'json.actual_value': expected 'wrong-value-C', got 'correct-value'
+#     Field: json.actual_value
+#     Expected: wrong-value-C
+#     Got: correct-value
+#
+# ============================================================
+# SUMMARY
+#   Total Runs: 3
+#   Failed Runs: 3/3
+#   Total Probes: 3
+#   Failed Probes: 3/3
+# ============================================================

@@ -1,0 +1,66 @@
+# Include with Variables Example
+# Demonstrates that variables in included files are substituted
+
+executions:
+  - name: "User A"
+    vars:
+      - USER_ID: "user-12345"
+      - ACCOUNT: "account-A"
+      - REGION: "us-east-1"
+      - CLIENT_ID: "client-A"
+  
+  - name: "User B"
+    vars:
+      - USER_ID: "user-67890"
+      - ACCOUNT: "account-B"
+      - REGION: "eu-west-1"
+      - CLIENT_ID: "client-B"
+
+probes:
+  # Probe 1: Include file with variables
+  - name: "Include with Variable Substitution"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body: !include ../includes/user-with-variables.json
+    validation:
+      status: 200
+      body:
+        # Verify variables were substituted in included file
+        equals:
+          json.user_id: "${USER_ID}"
+          json.account: "${ACCOUNT}"
+          json.region: "${REGION}"
+          json.metadata.client_id: "${CLIENT_ID}"
+        present:
+          - "json.metadata"
+          - "json.metadata.api_version"
+
+# How it works:
+# 1. !include loads the file content (with literal "${USER_ID}" strings)
+# 2. Executor substitutes variables in the entire body before sending
+# 3. Each execution gets different values
+#
+# User A sends:
+# {
+#   "user_id": "user-12345",
+#   "account": "account-A",
+#   "region": "us-east-1",
+#   "metadata": {
+#     "client_id": "client-A",
+#     "api_version": "v1"
+#   }
+# }
+#
+# User B sends:
+# {
+#   "user_id": "user-67890",
+#   "account": "account-B",
+#   "region": "eu-west-1",
+#   "metadata": {
+#     "client_id": "client-B",
+#     "api_version": "v1"
+#   }
+# }

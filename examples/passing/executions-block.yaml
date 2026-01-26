@@ -1,0 +1,86 @@
+# Executions Block Example
+# Demonstrates the new executions syntax for multiple probe runs
+
+executions:
+  - name: "Production User A"
+    vars:
+      - ACCOUNT: "123456789"
+      - CLIENT_ID: "client-prod-a"
+      - REGION: "us-east-1"
+  
+  - name: "Production User B"
+    vars:
+      - ACCOUNT: "987654321"
+      - CLIENT_ID: "client-prod-b"
+      - REGION: "eu-west-1"
+  
+  - name: "Staging Environment"
+    vars:
+      - ACCOUNT: "555555555"
+      - CLIENT_ID: "${STAGING_CLIENT_ID}"  # Get from environment variable
+      - REGION: "us-west-2"
+
+probes:
+  # Probe 1: Health check with context-specific variables
+  - name: "Health Check"
+    type: rest
+    endpoint: "https://httpbin.org/headers"
+    headers:
+      X-Account: "${ACCOUNT}"
+      X-Client-ID: "${CLIENT_ID}"
+      X-Region: "${REGION}"
+    validation:
+      status: 200
+      body:
+        present:
+          - "headers.X-Account"
+          - "headers.X-Client-Id"
+        # Variable substitution in validation!
+        equals:
+          headers.X-Account: "${ACCOUNT}"
+          headers.X-Client-Id: "${CLIENT_ID}"
+          headers.X-Region: "${REGION}"
+  
+  # Probe 2: POST with variables in body and validation
+  - name: "Create Resource"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      account_id: "${ACCOUNT}"
+      client_id: "${CLIENT_ID}"
+      region: "${REGION}"
+    validation:
+      status: 200
+      body:
+        equals:
+          json.account_id: "${ACCOUNT}"
+          json.client_id: "${CLIENT_ID}"
+          json.region: "${REGION}"
+    output:
+      REQUEST_ID: "body.headers.X-Amzn-Trace-Id"
+  
+  # Probe 3: Use captured variable
+  - name: "Verify Request"
+    type: rest
+    endpoint: "https://httpbin.org/get"
+    headers:
+      X-Request-ID: "${REQUEST_ID}"
+      X-Account: "${ACCOUNT}"
+    validation:
+      status: 200
+
+# Expected Behavior:
+# - 3 executions run (one for each entry in executions block)
+# - Each execution has isolated variables
+# - Run 1: "Production User A" with ACCOUNT=123456789
+# - Run 2: "Production User B" with ACCOUNT=987654321
+# - Run 3: "Staging Environment" with CLIENT_ID from env var
+#
+# Output on failure shows execution name:
+# Production User A
+# --------------------
+# Probe: Health Check
+#   ✗ ...

@@ -17,6 +17,7 @@ class TypeValidator(Validator):
         'array': lambda x: isinstance(x, list),
         'object': lambda x: isinstance(x, dict),
         'null': lambda x: x is None,
+        'None': lambda x: x is None,
     }
     
     def __init__(self, extractor):

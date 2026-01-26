@@ -1,0 +1,47 @@
+# Variable Validation Failures
+# Tests validation failures with variable substitution
+
+executions:
+  - name: "User A"
+    vars:
+      - USER_ID: "12345"
+      - EXPECTED_EMAIL: "wrong@example.com"
+  
+  - name: "User B"
+    vars:
+      - USER_ID: "67890"
+      - EXPECTED_EMAIL: "also-wrong@example.com"
+
+probes:
+  # Probe 1: Variable in validation - wrong value
+  - name: "Variable Validation Mismatch"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      user_id: "${USER_ID}"
+      email: "actual@example.com"
+    validation:
+      status: 200
+      body:
+        equals:
+          json.email: "${EXPECTED_EMAIL}"  # FAIL: wrong expected email
+  
+  # Probe 2: Variable in pattern match - wrong pattern
+  - name: "Variable Pattern Mismatch"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      user_id: "${USER_ID}"
+    validation:
+      status: 200
+      body:
+        matches:
+          json.user_id: "^${USER_ID}XXX$"  # FAIL: pattern doesn't match
+
+# Expected: Both probes fail in both executions (4 total failures)

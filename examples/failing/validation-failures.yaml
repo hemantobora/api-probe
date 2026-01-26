@@ -1,0 +1,110 @@
+# Validation Failures Example
+# Tests different types of validation failures
+
+probes:
+  # Probe 1: Status code mismatch
+  - name: "Status Code Mismatch"
+    type: rest
+    endpoint: "https://httpbin.org/status/200"
+    validation:
+      status: 404  # FAIL: expects 404 but gets 200
+  
+  # Probe 2: Missing field
+  - name: "Missing Field"
+    type: rest
+    endpoint: "https://httpbin.org/json"
+    validation:
+      status: 200
+      body:
+        present:
+          - "slideshow.nonexistent_field"  # FAIL: field doesn't exist
+  
+  # Probe 3: Wrong value
+  - name: "Wrong Value"
+    type: rest
+    endpoint: "https://httpbin.org/json"
+    validation:
+      status: 200
+      body:
+        equals:
+          slideshow.title: "Wrong Title"  # FAIL: actual is "Sample Slide Show"
+  
+  # Probe 4: Type mismatch
+  - name: "Type Mismatch"
+    type: rest
+    endpoint: "https://httpbin.org/json"
+    validation:
+      status: 200
+      body:
+        type:
+          slideshow.title: integer  # FAIL: actual is string
+  
+  # Probe 5: Pattern doesn't match
+  - name: "Pattern Mismatch"
+    type: rest
+    endpoint: "https://httpbin.org/uuid"
+    validation:
+      status: 200
+      body:
+        matches:
+          uuid: "^[0-9]+$"  # FAIL: UUID doesn't match numeric pattern
+  
+  # Probe 6: Header validation failure
+  - name: "Header Validation Failure"
+    type: rest
+    endpoint: "https://httpbin.org/headers"
+    validation:
+      status: 200
+      headers:
+        equals:
+          Content-Type: "text/html"  # FAIL: actual is application/json
+  
+  # Probe 7: Field should be absent but is present
+  - name: "Unwanted Field Present"
+    type: rest
+    endpoint: "https://httpbin.org/json"
+    validation:
+      status: 200
+      body:
+        absent:
+          - "slideshow"  # FAIL: slideshow field exists
+  
+  # Probe 8: Range validation failure
+  - name: "Out of Range"
+    type: rest
+    endpoint: "https://httpbin.org/post"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      age: 150
+    validation:
+      status: 200
+      body:
+        range:
+          json.age: [0, 120]  # FAIL: 150 > 120
+  
+  # Probe 9: Contains validation failure
+  - name: "Substring Not Found"
+    type: rest
+    endpoint: "https://httpbin.org/json"
+    validation:
+      status: 200
+      body:
+        contains:
+          slideshow.title: "NonExistentSubstring"  # FAIL: substring not in title
+  
+  # Probe 10: Multiple validation failures in one probe
+  - name: "Multiple Failures"
+    type: rest
+    endpoint: "https://httpbin.org/get"
+    validation:
+      status: 404  # FAIL: expects 404 but gets 200
+      headers:
+        equals:
+          Content-Type: "text/plain"  # FAIL: wrong content type
+      body:
+        equals:
+          url: "https://wrong.url"  # FAIL: wrong URL
+
+# Expected: All 10 probes fail with detailed error messages
