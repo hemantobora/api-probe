@@ -1,10 +1,14 @@
-"""Execution context for a single test run."""
+"""Execution context for a single probe run."""
 
+from threading import Lock
 from typing import Any, Dict
 
 
 class ExecutionContext:
-    """Holds variables and state for a single execution run."""
+    """Holds variables and state for a single execution run.
+    
+    Thread-safe for concurrent variable capture in parallel groups.
+    """
     
     def __init__(self, env_vars: Dict[str, str]):
         """Initialize execution context.
@@ -13,18 +17,24 @@ class ExecutionContext:
             env_vars: Initial environment variables for this run
         """
         self.variables: Dict[str, str] = env_vars.copy()
+        self._lock = Lock()
     
     def set_variable(self, name: str, value: Any) -> None:
         """Set a variable (from output capture).
+        
+        Thread-safe for concurrent writes from parallel probes.
         
         Args:
             name: Variable name
             value: Variable value (will be converted to string)
         """
-        self.variables[name] = str(value)
+        with self._lock:
+            self.variables[name] = str(value)
     
     def get_variable(self, name: str) -> str:
         """Get a variable value.
+        
+        Thread-safe for concurrent reads.
         
         Args:
             name: Variable name
@@ -35,10 +45,13 @@ class ExecutionContext:
         Raises:
             KeyError: If variable doesn't exist
         """
-        return self.variables[name]
+        with self._lock:
+            return self.variables[name]
     
     def has_variable(self, name: str) -> bool:
         """Check if variable exists.
+        
+        Thread-safe for concurrent checks.
         
         Args:
             name: Variable name
@@ -46,4 +59,5 @@ class ExecutionContext:
         Returns:
             True if variable exists
         """
-        return name in self.variables
+        with self._lock:
+            return name in self.variables

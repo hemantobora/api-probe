@@ -46,7 +46,7 @@ class VariableSubstitutor:
             text: String containing ${VAR} patterns
             
         Returns:
-            String with variables replaced
+            String with variables replaced (always returns string)
             
         Raises:
             ValueError: If variable is undefined

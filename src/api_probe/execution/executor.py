@@ -71,18 +71,19 @@ class ProbeExecutor:
         merged_vars = env_vars.copy()
         
         for key, value in exec_vars.items():
-            if value and '${' in value:
+            # Only attempt string-based substitution if the value is a string
+            if isinstance(value, str) and '${' in value:
                 # Value contains variable reference - substitute from env
                 substitutor = VariableSubstitutor(env_vars)
                 try:
                     resolved_value = substitutor.substitute(value)
-                    merged_vars[key] = resolved_value
+                    merged_vars[key] = str(resolved_value)
                 except ValueError:
                     # Variable not in env either - keep as is, will fail later
                     merged_vars[key] = value
             else:
-                # Direct value
-                merged_vars[key] = value
+                # Direct value - convert to string for storage
+                merged_vars[key] = str(value)
         
         # Generate name if not provided
         name = execution.name if execution.name else generate_name()
@@ -131,21 +132,14 @@ class ProbeExecutor:
         """
         # Use ThreadPoolExecutor for parallel execution
         with ThreadPoolExecutor(max_workers=len(group.probes)) as executor:
-            # Submit all probes
-            future_to_probe = {
-                executor.submit(self._execute_probe, probe, context): probe
+            # Submit all probes and maintain order by index - O(n)
+            futures = [
+                executor.submit(self._execute_probe, probe, context)
                 for probe in group.probes
-            }
+            ]
             
-            # Collect results in original order
-            results = []
-            for probe in group.probes:
-                # Find the future for this probe
-                for future, submitted_probe in future_to_probe.items():
-                    if submitted_probe is probe:
-                        result = future.result()
-                        results.append(result)
-                        break
+            # Collect results in original order - O(n)
+            results = [future.result() for future in futures]
             
             return results
     
