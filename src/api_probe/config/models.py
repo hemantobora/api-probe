@@ -30,12 +30,15 @@ class Probe:
     timeout: Optional[float] = None  # Request timeout in seconds
     retry: Optional[Dict[str, Any]] = None  # Retry configuration
     debug: bool = False  # Print request/response details to stderr
+    ignore: Optional[Union[bool, str]] = None  # Skip this probe if true or "${VAR}" evaluates to true
 
 
 @dataclass
 class Group:
     """Group of probes that execute in parallel."""
     probes: List[Probe] = field(default_factory=list)
+    name: Optional[str] = None  # Optional group name
+    ignore: Optional[Union[bool, str]] = None  # Skip entire group if true or "${VAR}" evaluates to true
 
 
 @dataclass

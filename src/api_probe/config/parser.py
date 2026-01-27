@@ -1,6 +1,6 @@
 """Configuration parser - converts raw dicts to models."""
 
-from typing import Any, Dict, List, Union
+from typing import Any, Dict
 
 from .models import Config, Probe, Group, Validation, Execution
 
@@ -107,7 +107,8 @@ class ConfigParser:
             delay=probe_dict.get('delay'),
             timeout=probe_dict.get('timeout'),
             retry=probe_dict.get('retry'),
-            debug=probe_dict.get('debug', False)
+            debug=probe_dict.get('debug', False),
+            ignore=probe_dict.get('ignore')
         )
     
     def _parse_group(self, group_dict: Dict[str, Any]) -> Group:
@@ -119,11 +120,20 @@ class ConfigParser:
         Returns:
             Group object
         """
+        from ..execution.name_generator import generate_name
+        
         probes = []
         for probe_dict in group_dict.get('probes', []):
             probes.append(self._parse_probe(probe_dict))
         
-        return Group(probes=probes)
+        # Get name or generate one
+        name = group_dict.get('name')
+        if not name:
+            name = generate_name()
+        
+        ignore = group_dict.get('ignore')
+        
+        return Group(probes=probes, name=name, ignore=ignore)
     
     def _parse_validation(self, validation_dict: Dict[str, Any]) -> Validation:
         """Parse validation specification.

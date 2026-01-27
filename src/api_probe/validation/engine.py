@@ -1,5 +1,6 @@
 """Validation engine that runs all validators."""
 
+import sys
 from typing import Any, Dict, List
 
 from ..validation.base import ValidationError, Validator
@@ -13,6 +14,7 @@ from ..validation.contains import ContainsValidator
 from ..validation.range import RangeValidator
 from ..validation.length import LengthValidator
 from ..validation.extractor import PathExtractor
+from ..execution.expression import ExpressionEvaluator
 
 
 class ValidationEngine:
@@ -21,6 +23,7 @@ class ValidationEngine:
     def __init__(self):
         """Initialize validation engine with all validators."""
         self.extractor = PathExtractor()
+        self.expression_evaluator = ExpressionEvaluator()
         
         # Initialize all validators
         self.status_validator = StatusValidator()
@@ -94,6 +97,12 @@ class ValidationEngine:
         Returns:
             List of validation errors
         """
+        # Check if header validation should be ignored
+        if 'ignore' in header_spec:
+            should_ignore = self._should_ignore_validation(header_spec['ignore'], response, {})
+            if should_ignore:
+                return []  # Skip all header validation
+        
         errors = []
         
         if 'present' in header_spec:
@@ -124,6 +133,12 @@ class ValidationEngine:
         Returns:
             List of validation errors
         """
+        # Check if body validation should be ignored
+        if 'ignore' in body_spec:
+            should_ignore = self._should_ignore_validation(body_spec['ignore'], response, {})
+            if should_ignore:
+                return []  # Skip all body validation
+        
         errors = []
         
         if 'present' in body_spec:
@@ -151,6 +166,32 @@ class ValidationEngine:
             errors.extend(self.length_validator.validate(test_name, response, body_spec['length']))
         
         return errors
+    
+    def _should_ignore_validation(self, ignore_expr: str, response: Any, variables: Dict[str, Any]) -> bool:
+        """Check if validation should be ignored based on expression.
+        
+        Args:
+            ignore_expr: Expression to evaluate
+            response: HTTP response
+            variables: Variable context (empty for validation)
+            
+        Returns:
+            True if validation should be skipped
+        """
+        try:
+            # Check if it's an expression
+            if self.expression_evaluator.is_expression(ignore_expr):
+                result = self.expression_evaluator.evaluate_for_output(
+                    ignore_expr, response, variables, self.extractor
+                )
+                return bool(result)
+            
+            # Plain boolean string
+            return ignore_expr.lower() in ('true', '1', 'yes', 'on')
+            
+        except Exception as e:
+            print(f"[WARN] Failed to evaluate validation ignore expression '{ignore_expr}': {e}", file=sys.stderr)
+            return False  # Don't ignore on error
     
     # Header-specific validation methods
     

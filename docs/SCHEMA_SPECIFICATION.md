@@ -174,6 +174,7 @@ A Probe represents a single API call with optional validation and output capture
     max_attempts: number                 # Number of attempts (default: 1)
     delay: number                        # Seconds between retries (default: 0)
   debug: boolean                         # Optional: Print request/response to stderr
+  ignore: boolean | integer | string    # Optional: Skip probe if true/1/${VAR}=true
   validation:                            # Optional: Response validation
     <validation-spec>
   output:                                # Optional: Variable capture
@@ -274,6 +275,37 @@ A Probe represents a single API call with optional validation and output capture
   [DEBUG]   Body: {"id": 12345, "name": "John", "email": "john@example.com"}
   ```
 
+#### `ignore` (optional)
+- **Type:** Boolean, Integer (0/1), String (variable substitution), or String (expression)
+- **Description:** Skip this probe without executing or reporting it
+- **Default:** Not ignored (probe runs)
+- **Values:**
+  - `true` or `1` - Always skip
+  - `false` or `0` - Always run  
+  - `"${VAR}"` - Dynamic based on variable (truthy values: "true", "1", "yes", "on")
+  - `"expression"` - Expression with functions and operators (e.g., `"len(OFFERS) <= 2"`)
+- **Expressions:** See [Expression Evaluation](#expression-evaluation) section
+- **Functions:** `len()`, `has()`, `empty()`
+- **Operators:** `==`, `!=`, `>`, `<`, `>=`, `<=`, `&&`, `||`, `!`
+- **Use Cases:**
+  - Temporarily disable tests during development
+  - Environment-specific test execution
+  - Feature flag based testing
+  - CI/CD conditional execution
+  - Conditional execution based on previous probe results
+- **Behavior:**
+  - Ignored probes do NOT execute (no HTTP request)
+  - Ignored probes do NOT appear in output or reports
+  - Ignored probes do NOT affect exit codes
+- **Examples:**
+  ```yaml
+  ignore: true                    # Always skip
+  ignore: false                   # Always run
+  ignore: "${SKIP_TEST}"          # Dynamic from variable
+  ignore: "len(OFFERS) <= 2"      # Expression
+  ignore: "!has(body.premium)"    # Expression with function
+  ```
+
 ---
 
 ## Group Definition
@@ -284,12 +316,42 @@ Groups enable parallel execution of probes. All probes within a group run simult
 
 ```yaml
 - group:
+    name: string              # Optional: Group name (auto-generated if not provided)
+    ignore: boolean | integer | string  # Optional: Skip entire group
     probes:
       - name: string
         # ... probe definition
       - name: string
         # ... probe definition
 ```
+
+### Schema
+
+```yaml
+- group:
+    name: string              # Optional: Group name
+    ignore: boolean | string  # Optional: Skip entire group
+    probes: []                # Required: List of probes
+```
+
+### Field Descriptions
+
+#### `name` (optional)
+- **Type:** String
+- **Description:** Human-readable name for this group
+- **Auto-generation:** If not provided, generates like "awesome-paris", "elegant-tokyo"
+- **Usage:** Shown in progress output and reports
+
+#### `ignore` (optional)
+- **Type:** Boolean, Integer (0/1), or String (for variable substitution)
+- **Description:** Skip entire group without executing any probes in it
+- **Default:** Not ignored (group runs)
+- **Behavior:** Same as probe-level ignore
+- **Note:** Individual probes can override with `ignore: false`
+
+#### `probes` (required)
+- **Type:** Array of Probe objects
+- **Description:** List of probes to execute in parallel
 
 ### Behavior
 
@@ -1129,6 +1191,246 @@ Since progress goes to stderr, you can:
 
 ---
 
+## Expression Evaluation
+
+api-probe supports expression evaluation in `output` and `ignore` fields, enabling conditional logic and computed values.
+
+### Supported Functions
+
+| Function | Description | Example | Returns |
+|----------|-------------|---------|----------|
+| `len(VAR)` | Get length of array/string/dict | `len(body.offers)` | Integer |
+| `has(VAR)` | Check if exists and not empty | `has(body.data)` | Boolean |
+| `empty(VAR)` | Check if empty or None | `empty(body.errors)` | Boolean |
+
+### Supported Operators
+
+- **Comparison:** `==`, `!=`, `>`, `<`, `>=`, `<=`
+- **Logical:** `&&` (AND), `||` (OR), `!` (NOT)
+
+### In `output` - Capture Computed Values
+
+```yaml
+output:
+  # Standard path extraction
+  OFFERS: "body.offers"
+  
+  # Expression: capture count
+  OFFER_COUNT: "len(body.offers)"
+  
+  # Expression: capture boolean
+  HAS_CONTENT: "has(body.offers[0].content)"
+  
+  # Expression: combined logic
+  IS_VALID: "len(body.offers) > 2 && has(body.offers[0].content)"
+```
+
+### In `ignore` - Conditional Execution
+
+```yaml
+probes:
+  - name: "Get Offers"
+    output:
+      OFFER_COUNT: "len(body.offers)"
+  
+  - name: "Process Rich Offers"
+    endpoint: "https://api.example.com/process"
+    ignore: "OFFER_COUNT <= 2"  # Skip if not enough offers
+  
+  - name: "Fallback Processing"
+    endpoint: "https://api.example.com/fallback"
+    ignore: "OFFER_COUNT > 2"   # Only run if few offers
+```
+
+### In Validation - Conditional Validation
+
+```yaml
+validation:
+  status: "2xx"
+  
+  headers:
+    ignore: "status != 200"  # Skip header validation if not 200
+    present:
+      - "X-Auth-Token"
+  
+  body:
+    ignore: "empty(body.data)"  # Skip body validation if empty
+    present:
+      - "data.id"
+      - "data.name"
+```
+
+### Expression Examples
+
+**Length checks:**
+```yaml
+ignore: "len(body.offers) <= 2"
+ignore: "len(ITEMS) == 0"
+OFFER_COUNT: "len(body.offers)"
+```
+
+**Existence checks:**
+```yaml
+ignore: "!has(body.premium)"
+ignore: "has(body.errors)"
+HAS_DATA: "has(body.data)"
+```
+
+**Combined logic:**
+```yaml
+ignore: "len(body.offers) > 2 && has(body.offers[0].content)"
+ignore: "status >= 400 || empty(body.data)"
+ignore: "!has(body.premium) || body.premium != true"
+```
+
+**Access to response:**
+```yaml
+# In output - can reference body.* directly
+OFFER_COUNT: "len(body.offers)"
+FIRST_ID: "body.offers[0].id"
+
+# In ignore - can use captured variables or response data
+ignore: "len(OFFERS) <= 2"          # Using captured variable
+ignore: "len(body.offers) <= 2"     # Direct response access
+ignore: "status != 200"              # Status code
+
+# In validation ignore - can use response data
+validation:
+  body:
+    ignore: "len(body.offers) == 0"  # Direct access in validation
+    present: ["offers[0].id"]
+```
+
+### Error Handling
+
+- Parse errors logged to stderr: `[WARN] Failed to evaluate expression ...`
+- On error in `output`: Variable set to `None`
+- On error in `ignore`: Returns `false` (probe/validation runs)
+- On error in validation `ignore`: Returns `false` (validation runs)
+
+---
+
+## Validation Conditional Ignore
+
+Validation sections (`headers` and `body`) support the `ignore` field to conditionally skip validation based on the response.
+
+### Schema
+
+```yaml
+validation:
+  status: integer | string
+  
+  headers:
+    ignore: string           # Expression to skip header validation
+    present: [...]           # Only runs if not ignored
+    equals: {...}
+  
+  body:
+    ignore: string           # Expression to skip body validation
+    present: [...]           # Only runs if not ignored
+    equals: {...}
+    type: {...}
+```
+
+### Use Cases
+
+**Skip validation for error responses:**
+```yaml
+validation:
+  status: "2xx"
+  
+  body:
+    ignore: "status >= 400"  # Don't validate body for errors
+    present:
+      - "data.id"
+      - "data.name"
+```
+
+**Skip validation for empty data:**
+```yaml
+validation:
+  body:
+    ignore: "empty(body.data)"  # Skip if no data
+    length:
+      data: [1, 100]
+    present:
+      - "data[0].id"
+```
+
+**Conditional validation based on response type:**
+```yaml
+validation:
+  body:
+    ignore: "body.type != 'detailed'"  # Only validate detailed responses
+    present:
+      - "data.metadata"
+      - "data.relations"
+      - "data.details"
+```
+
+**Skip header validation selectively:**
+```yaml
+validation:
+  headers:
+    ignore: "status != 200"  # Only validate headers on success
+    present:
+      - "X-Request-ID"
+      - "X-Auth-Token"
+  
+  body:
+    present:
+      - "id"  # Always validate body
+```
+
+**Premium features validation:**
+```yaml
+validation:
+  body:
+    ignore: "!has(body.premium) || body.premium != true"
+    present:
+      - "premium.tier"
+      - "premium.features"
+```
+
+### Complete Example
+
+```yaml
+probes:
+  - name: "Get User Data"
+    endpoint: "https://api.example.com/user"
+    validation:
+      status: 200
+      
+      headers:
+        # Skip header checks if not successful
+        ignore: "status != 200"
+        present:
+          - "X-User-Type"
+          - "X-Session-ID"
+      
+      body:
+        # Always validate basic fields
+        present:
+          - "id"
+          - "email"
+  
+  - name: "Get Premium Features"
+    endpoint: "https://api.example.com/features"
+    validation:
+      status: 200
+      
+      body:
+        # Only validate if user is premium
+        ignore: "body.user.premium != true"
+        present:
+          - "premium.tier"
+          - "premium.benefits"
+        length:
+          "premium.benefits": [1, 50]
+```
+
+---
+
 ## Complete Examples
 
 ### Example 1: Multi-Context with Validation
@@ -1286,6 +1588,18 @@ probes:
 
 ## Version History
 
+- **v2.4.0** (2025-01-27)
+  - Added expression evaluation in `output` field (len, has, empty functions)
+  - Added expression evaluation in `ignore` field (len, has, empty functions)
+  - Added `ignore` field in validation headers and body sections
+  - Expressions support operators: ==, !=, >, <, >=, <=, &&, ||, !
+  - Expressions can access response data: status, body.*, headers.*
+  
+- **v2.3.0** (2025-01-27)
+  - Added `ignore` field for probes and groups (conditional execution)
+  - Added `name` field for groups (with auto-generation)
+  - Improved parallel group progress reporting with names
+  
 - **v2.2.0** (2025-01-26)
   - Added timeout field for request timeouts
   - Added retry configuration for automatic retries

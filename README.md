@@ -10,10 +10,15 @@
 ✅ XML/SOAP Support (XPath)  
 ✅ Multiple Execution Contexts (test different users/accounts)  
 ✅ Variable Substitution in requests AND validations  
-✅ Output Variable Capture (chain probes)  
+✅ Output Variable Capture with expressions (len, has, empty)  
+✅ Conditional Probe Execution (ignore field with expressions)  
+✅ Conditional Validation (skip headers/body based on response)  
 ✅ Parallel Group Execution  
 ✅ Include Directive (!include) for external files  
 ✅ Rich Validations (status, headers, body)  
+✅ Timeout, Retry, Debug support  
+✅ Response Time Validation  
+✅ Progress Reporting to stderr  
 ✅ Silent Success / Verbose Failure  
 ✅ Docker-First, CI/CD Native  
 
@@ -66,11 +71,13 @@ probes:
     body: !include includes/login-body.json  # External file
     validation:
       status: 200
+      response_time: 1000  # Must respond within 1 second
       body:
         equals:
           account_id: "${ACCOUNT}"  # Variable substitution in validation!
     output:
       TOKEN: "body.access_token"
+      HAS_PREMIUM: "has(body.premium)"  # Expression evaluation
   
   - name: "Get Profile"
     type: rest
@@ -81,6 +88,16 @@ probes:
       status: 200
       body:
         present: ["id", "email"]
+  
+  - name: "Get Premium Features"
+    type: rest
+    endpoint: "${BASE_URL}/features"
+    ignore: "!HAS_PREMIUM"  # Skip if not premium user
+    validation:
+      status: 200
+      body:
+        ignore: "empty(body.features)"  # Skip validation if empty
+        present: ["features[0].name"]
 ```
 
 ## Multiple Execution Contexts
@@ -113,6 +130,44 @@ probes:
 Each execution runs independently with isolated variables.
 
 See [examples/passing/executions-block.yaml](examples/passing/executions-block.yaml) for details.
+
+## Conditional Execution
+
+Skip probes or validation based on previous results:
+
+```yaml
+probes:
+  - name: "Get Offers"
+    endpoint: "https://api.example.com/offers"
+    output:
+      OFFER_COUNT: "len(body.offers)"  # Capture count using expression
+      HAS_PREMIUM: "has(body.premium)"
+  
+  - name: "Process Rich Offers"
+    endpoint: "https://api.example.com/process"
+    ignore: "OFFER_COUNT <= 2"  # Skip if not enough offers
+    validation:
+      status: 200
+  
+  - name: "Validate Premium Features"
+    endpoint: "https://api.example.com/user"
+    validation:
+      status: 200
+      body:
+        ignore: "!HAS_PREMIUM"  # Skip body validation if not premium
+        present:
+          - "premium.tier"
+          - "premium.benefits"
+```
+
+**Expression Functions:**
+- `len(VAR)` - Get length of array/string/dict
+- `has(VAR)` - Check if exists and not empty
+- `empty(VAR)` - Check if empty or None
+
+**Operators:** `==`, `!=`, `>`, `<`, `>=`, `<=`, `&&`, `||`, `!`
+
+See [SCHEMA_SPECIFICATION.md](docs/SCHEMA_SPECIFICATION.md#expression-evaluation) for details.
 
 ## Parallel Groups
 
@@ -244,8 +299,46 @@ See [GETTING_STARTED.md](docs/GETTING_STARTED.md) for details.
 
 ## Status
 
-**Version:** 0.2.0  
+**Version:** 2.4.0  
 **Status:** Production Ready
+
+## Version History
+
+- **v2.4.0**
+  - Added expression evaluation in `output` field (len, has, empty functions)
+  - Added expression evaluation in `ignore` field (len, has, empty functions)
+  - Added `ignore` field in validation headers and body sections
+  - Expressions support operators: ==, !=, >, <, >=, <=, &&, ||, !
+  - Expressions can access response data: status, body.*, headers.*
+
+- **v2.3.0**
+  - Added `ignore` field for probes and groups (conditional execution)
+  - Added `name` field for groups (with auto-generation)
+  - Improved parallel group progress reporting with names
+
+- **v2.2.0**
+  - Added timeout field for request timeouts
+  - Added retry configuration for automatic retries
+  - Added debug flag for request/response logging
+  - Added response_time validation for performance checks
+  - Added status pattern matching (2xx, 3xx, 4xx, 5xx)
+  - Added progress reporting to stderr
+  - Fixed length validator for root-level arrays ($)
+
+- **v2.1.0**
+  - Added delay field for probes
+  - Added length validator for arrays and strings
+
+- **v2.0.0**
+  - Added executions block
+  - Added variable substitution in validation
+  - Added parallel groups
+  - Added XML/SOAP support
+  - Added !include directive
+  - Enhanced variable resolution
+
+- **v1.0.0**
+  - Initial release
 
 ## License
 

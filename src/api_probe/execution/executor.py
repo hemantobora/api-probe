@@ -1,13 +1,14 @@
 """Main probe executor - orchestrates entire execution flow."""
 
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
 from .context import ExecutionContext
 from .output import OutputCapture
 from .results import ProbeResult, RunResult, ExecutionResult
 from .variables import VariableSubstitutor, get_env_variables
 from .name_generator import generate_name
+from .expression import ExpressionEvaluator
 from ..config.models import Config, Probe, Group
 from ..http.builder import RequestBuilder
 from ..http.client import HTTPClient
@@ -24,6 +25,7 @@ class ProbeExecutor:
         self.http_client = HTTPClient()
         self.validation_engine = ValidationEngine()
         self.output_capture = OutputCapture(PathExtractor())
+        self.expression_evaluator = ExpressionEvaluator()
     
     def execute(self, config: Config) -> ExecutionResult:
         """Execute all probes from configuration.
@@ -122,14 +124,69 @@ class ProbeExecutor:
         # Execute probes sequentially (groups execute in parallel)
         for item in config.probes:
             if isinstance(item, Probe):
+                # Check if probe should be ignored
+                if self._should_ignore(item, context):
+                    continue
                 probe_result = self._execute_probe(item, context)
                 run_result.probe_results.append(probe_result)
             elif isinstance(item, Group):
+                # Check if group should be ignored
+                if self._should_ignore(item, context):
+                    continue
                 # Parallel execution for groups
                 group_results = self._execute_group(item, context)
                 run_result.probe_results.extend(group_results)
         
         return run_result
+    
+    def _should_ignore(self, item: Union[Probe, Group], context: ExecutionContext) -> bool:
+        """Check if probe or group should be ignored.
+        
+        Args:
+            item: Probe or Group to check
+            context: Execution context with variables
+            
+        Returns:
+            True if item should be ignored, False otherwise
+        """
+        ignore_value = item.ignore
+        
+        if ignore_value is None:
+            return False
+        
+        # Handle boolean
+        if isinstance(ignore_value, bool):
+            return ignore_value
+        
+        # Handle string
+        if isinstance(ignore_value, str):
+            # Check if it's an expression
+            if self.expression_evaluator.is_expression(ignore_value):
+                # Evaluate expression with current context variables
+                return self.expression_evaluator.evaluate(ignore_value, context.variables)
+            
+            # Check if it's a variable substitution ${VAR}
+            if ignore_value.startswith("${") and ignore_value.endswith("}"):
+                substitutor = VariableSubstitutor(context.variables)
+                try:
+                    resolved = substitutor.substitute(ignore_value)
+                    # Convert to boolean
+                    if isinstance(resolved, str):
+                        resolved_lower = resolved.lower()
+                        return resolved_lower in ('true', '1', 'yes', 'on')
+                    return bool(resolved)
+                except:
+                    # If substitution fails, don't ignore
+                    return False
+            
+            # Plain string - check if it's a truthy value
+            return ignore_value.lower() in ('true', '1', 'yes', 'on')
+        
+        # Handle integers (0/1)
+        if isinstance(ignore_value, int):
+            return bool(ignore_value)
+        
+        return False
     
     def _execute_group(self, group: Group, context: ExecutionContext) -> List[ProbeResult]:
         """Execute probes in a group in parallel.
@@ -143,18 +200,29 @@ class ProbeExecutor:
         """
         import sys
         
-        # Progress: Note that probes are running in parallel
-        print(f"  [Parallel Group - {len(group.probes)} probe(s)]:", file=sys.stderr)
+        # Progress: Show group name
+        group_name = group.name if group.name else "Parallel Group"
+        print(f"  [{group_name} - {len(group.probes)} probe(s)]:", file=sys.stderr)
         
         # Use ThreadPoolExecutor for parallel execution
         with ThreadPoolExecutor(max_workers=len(group.probes)) as executor:
-            # Submit all probes and maintain order by index - O(n)
-            futures = [
-                executor.submit(self._execute_probe, probe, context, in_group=True)
-                for probe in group.probes
+            # Filter probes that should not be ignored
+            probes_to_run = [
+                probe for probe in group.probes 
+                if not self._should_ignore(probe, context)
             ]
             
-            # Collect results in original order - O(n)
+            if not probes_to_run:
+                # All probes in group are ignored
+                return []
+            
+            # Submit all non-ignored probes and maintain order by index
+            futures = [
+                executor.submit(self._execute_probe, probe, context, in_group=True)
+                for probe in probes_to_run
+            ]
+            
+            # Collect results in original order
             results = [future.result() for future in futures]
             
             return results
@@ -313,7 +381,8 @@ class ProbeExecutor:
             delay=probe.delay,
             timeout=probe.timeout,
             retry=probe.retry,
-            debug=probe.debug
+            debug=probe.debug,
+            ignore=probe.ignore
         )
     
     def _validation_to_dict(self, validation: Any, substitutor: VariableSubstitutor) -> Dict[str, Any]:
