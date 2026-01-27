@@ -10,6 +10,7 @@ class Validation:
     status: Optional[int] = None
     headers: Optional[Dict[str, Any]] = None
     body: Optional[Dict[str, Any]] = None
+    response_time: Optional[int] = None  # Max response time in milliseconds
 
 
 @dataclass
@@ -26,6 +27,9 @@ class Probe:
     validation: Optional[Validation] = None
     output: Optional[Dict[str, str]] = None
     delay: Optional[float] = None  # Delay in seconds before executing probe
+    timeout: Optional[float] = None  # Request timeout in seconds
+    retry: Optional[Dict[str, Any]] = None  # Retry configuration
+    debug: bool = False  # Print request/response details to stderr
 
 
 @dataclass

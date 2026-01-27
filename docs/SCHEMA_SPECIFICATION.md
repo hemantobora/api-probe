@@ -22,6 +22,7 @@ This document provides the complete YAML schema specification for api-probe conf
 - [Output Variables](#output-variables)
 - [Include Directive](#include-directive)
 - [Variable Substitution](#variable-substitution)
+- [Progress Reporting](#progress-reporting)
 - [Complete Examples](#complete-examples)
 
 ---
@@ -168,6 +169,11 @@ A Probe represents a single API call with optional validation and output capture
   
   # Common fields
   delay: number                          # Optional: Seconds to wait before executing
+  timeout: number                        # Optional: Request timeout in seconds
+  retry:                                 # Optional: Retry configuration
+    max_attempts: number                 # Number of attempts (default: 1)
+    delay: number                        # Seconds between retries (default: 0)
+  debug: boolean                         # Optional: Print request/response to stderr
   validation:                            # Optional: Response validation
     <validation-spec>
   output:                                # Optional: Variable capture
@@ -206,6 +212,67 @@ A Probe represents a single API call with optional validation and output capture
   - `delay: 2` - Wait 2 seconds
   - `delay: 0.5` - Wait half a second
   - `delay: 0` - No delay (ignored)
+
+#### `timeout` (optional)
+- **Type:** Number (float)
+- **Description:** Maximum time to wait for the request to complete, in seconds
+- **Default:** 30 seconds
+- **Use Cases:**
+  - Prevent hanging on slow APIs
+  - Enforce SLA requirements
+  - Fail fast on timeouts
+- **Examples:**
+  - `timeout: 5` - 5 second timeout
+  - `timeout: 30` - 30 second timeout
+  - `timeout: 0.5` - 500ms timeout
+
+#### `retry` (optional)
+- **Type:** Object with `max_attempts` and `delay` fields
+- **Description:** Automatically retry failed requests
+- **Default:** No retries (single attempt)
+- **Schema:**
+  ```yaml
+  retry:
+    max_attempts: 3    # Total attempts (1-10)
+    delay: 2           # Seconds to wait between retries
+  ```
+- **Use Cases:**
+  - Handle flaky networks
+  - Temporary service unavailability
+  - Rate limit backoff
+- **Behavior:**
+  - Retries on any request exception (timeout, connection error, etc.)
+  - Does NOT retry on validation failures
+  - Exponential backoff not supported (fixed delay)
+
+#### `debug` (optional)
+- **Type:** Boolean
+- **Description:** Print full request and response details to stderr
+- **Default:** `false`
+- **Output includes:**
+  - Request method, URL, headers, body preview
+  - Response status, headers, body preview (first 500 chars)
+  - Retry attempts if applicable
+- **Use Cases:**
+  - Troubleshooting failing probes
+  - Inspecting actual request/response
+  - Debugging variable substitution
+- **Example:**
+  ```yaml
+  debug: true
+  ```
+- **Output (to stderr):**
+  ```
+  [DEBUG] Request attempt 1/1
+  [DEBUG]   Method: POST
+  [DEBUG]   URL: https://api.example.com/users
+  [DEBUG]   Headers: {'Content-Type': 'application/json'}
+  [DEBUG]   Body: {"name": "John", "email": "john@example.com"}
+  [DEBUG] Response:
+  [DEBUG]   Status: 201
+  [DEBUG]   Headers: {'content-type': 'application/json', ...}
+  [DEBUG]   Body: {"id": 12345, "name": "John", "email": "john@example.com"}
+  ```
 
 ---
 
@@ -476,10 +543,11 @@ Validates HTTP response status, headers, and body.
 
 ```yaml
 validation:
-  status: integer                   # Optional: Expected status code
-  headers:                          # Optional: Header validations
+  status: integer | string              # Optional: Expected status code or pattern
+  response_time: integer                # Optional: Max response time in milliseconds
+  headers:                              # Optional: Header validations
     <validator>: <spec>
-  body:                             # Optional: Body validations
+  body:                                 # Optional: Body validations
     <validator>: <spec>
 ```
 
@@ -516,6 +584,46 @@ validation:
 - `"5xx"` or `"5XX"` - Server errors (500-599)
 
 **Note:** Patterns must be strings (use quotes)
+
+### Response Time Validation
+
+```yaml
+validation:
+  response_time: 1000    # Max 1000 milliseconds (1 second)
+```
+
+**Validates that the total request-response time does not exceed the specified limit.**
+
+- **Type:** Integer (milliseconds)
+- **Measured:** From request start to response complete
+- **Includes:** Network latency, server processing, data transfer
+- **Use Cases:**
+  - SLA enforcement (e.g., API must respond within 500ms)
+  - Performance regression detection
+  - Identifying slow endpoints
+
+**Examples:**
+```yaml
+validation:
+  response_time: 500     # Must respond within 500ms
+  response_time: 2000    # Must respond within 2 seconds
+  response_time: 100     # Must respond within 100ms (very strict)
+```
+
+**Error Message:**
+```
+Response time 1250ms exceeds maximum 1000ms
+```
+
+**Combined with other validations:**
+```yaml
+validation:
+  status: "2xx"
+  response_time: 1000    # Fast AND successful
+  body:
+    present:
+      - "data"
+```
 
 ### Header Validation
 
@@ -946,6 +1054,81 @@ variables:
 
 ---
 
+## Progress Reporting
+
+api-probe automatically prints execution progress to stderr, allowing you to monitor probe execution in real-time while keeping normal output (results, errors) separate.
+
+### Output Format
+
+```
+▶ Executing: Production Context
+============================================================
+  → OAuth Authentication
+    ✓ Passed
+  → Get User Profile
+    ✓ Passed  
+  → Update Settings
+    ✗ Failed (2 error(s))
+  → Delete Cache
+    ⊗ Skipped: Variable CACHE_ID not defined
+
+▶ Executing: Staging Context
+============================================================
+  → OAuth Authentication
+    ✓ Passed
+  → Get User Profile
+    ✓ Passed
+```
+
+### Progress Symbols
+
+- `▶` - Execution context starting
+- `→` - Probe starting
+- `✓` - Probe passed validation
+- `✗` - Probe failed validation
+- `⊗` - Probe skipped (missing variable, etc.)
+
+### With Debug Mode
+
+When `debug: true` is set on a probe, detailed request/response information is printed:
+
+```
+  → Debug This API
+[DEBUG] Request attempt 1/1
+[DEBUG]   Method: GET
+[DEBUG]   URL: https://api.example.com/data
+[DEBUG]   Headers: {'Authorization': 'Bearer abc123'}
+[DEBUG] Response:
+[DEBUG]   Status: 200
+[DEBUG]   Headers: {'content-type': 'application/json'}
+[DEBUG]   Body: {"id": 123, "name": "test"}...
+    ✓ Passed
+```
+
+### Capturing Progress
+
+Since progress goes to stderr, you can:
+
+```bash
+# See progress but not results
+./run.sh config.yaml 2>&1 >/dev/null
+
+# Save progress to log file
+./run.sh config.yaml 2>execution.log
+
+# See both (normal)
+./run.sh config.yaml
+```
+
+### Benefits
+
+- **Real-time feedback** - Know which probe is running
+- **CI/CD visibility** - Progress visible in pipeline logs  
+- **Debugging** - Combine with `debug: true` for full details
+- **Separate concerns** - Progress (stderr) vs results (stdout)
+
+---
+
 ## Complete Examples
 
 ### Example 1: Multi-Context with Validation
@@ -1051,10 +1234,67 @@ probes:
           - "errors"
 ```
 
+### Example 4: Advanced Features (Timeout, Retry, Debug)
+
+```yaml
+executions:
+  - name: "Production"
+    vars:
+      - BASE_URL: "https://api.prod.example.com"
+      - API_KEY: "${PROD_API_KEY}"
+
+probes:
+  - name: "Health Check with Retry"
+    type: rest
+    endpoint: "${BASE_URL}/health"
+    timeout: 5              # 5 second timeout
+    retry:
+      max_attempts: 3       # Retry up to 3 times
+      delay: 2              # Wait 2 seconds between retries
+    validation:
+      status: "2xx"         # Accept any 2xx status
+  
+  - name: "Get Data (Debug Mode)"
+    type: rest
+    endpoint: "${BASE_URL}/data"
+    timeout: 10
+    debug: true             # Print full request/response
+    validation:
+      status: 200
+      response_time: 500    # Must respond within 500ms
+      body:
+        length:
+          "$": [1, 100]     # Root array with 1-100 items
+        type:
+          "$": array
+        present:
+          - "$[0].id"
+  
+  - name: "Rate Limited API"
+    type: rest
+    endpoint: "${BASE_URL}/limited"
+    delay: 1                # Wait 1 second before request
+    timeout: 15
+    retry:
+      max_attempts: 5
+      delay: 3
+    validation:
+      status: 200
+```
+
 ---
 
 ## Version History
 
+- **v2.2.0** (2025-01-26)
+  - Added timeout field for request timeouts
+  - Added retry configuration for automatic retries
+  - Added debug flag for request/response logging
+  - Added response_time validation for performance checks
+  - Added status pattern matching (2xx, 3xx, 4xx, 5xx)
+  - Added progress reporting to stderr
+  - Fixed length validator for root-level arrays ($)
+  
 - **v2.1.0** (2025-01-26)
   - Added delay field for probes
   - Added length validator for arrays and strings

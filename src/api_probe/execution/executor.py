@@ -34,18 +34,29 @@ class ProbeExecutor:
         Returns:
             Execution result with all probe results
         """
+        import sys
+        
         execution_result = ExecutionResult()
         
         if config.executions:
             # Multiple executions defined
             for run_index, execution in enumerate(config.executions):
                 context = self._create_context_from_execution(execution)
+                
+                # Progress: Execution start
+                print(f"\n▶ Executing: {context.execution_name}", file=sys.stderr)
+                print("=" * 60, file=sys.stderr)
+                
                 run_result = self._execute_run(config, context, run_index)
                 execution_result.run_results.append(run_result)
         else:
             # No executions block - single run with env vars
             env_vars = get_env_variables()
             context = ExecutionContext(env_vars)
+            
+            print(f"\n▶ Executing probes...", file=sys.stderr)
+            print("=" * 60, file=sys.stderr)
+            
             run_result = self._execute_run(config, context, 0)
             execution_result.run_results.append(run_result)
         
@@ -130,11 +141,16 @@ class ProbeExecutor:
         Returns:
             List of probe results (order preserved from group)
         """
+        import sys
+        
+        # Progress: Note that probes are running in parallel
+        print(f"  [Parallel Group - {len(group.probes)} probe(s)]:", file=sys.stderr)
+        
         # Use ThreadPoolExecutor for parallel execution
         with ThreadPoolExecutor(max_workers=len(group.probes)) as executor:
             # Submit all probes and maintain order by index - O(n)
             futures = [
-                executor.submit(self._execute_probe, probe, context)
+                executor.submit(self._execute_probe, probe, context, in_group=True)
                 for probe in group.probes
             ]
             
@@ -143,20 +159,29 @@ class ProbeExecutor:
             
             return results
     
-    def _execute_probe(self, probe: Probe, context: ExecutionContext) -> ProbeResult:
+    def _execute_probe(self, probe: Probe, context: ExecutionContext, in_group: bool = False) -> ProbeResult:
         """Execute a single probe.
         
         Args:
             probe: Probe definition
             context: Execution context
+            in_group: Whether this probe is part of a parallel group
             
         Returns:
             Probe result
         """
+        import sys
+        
         try:
+            # Progress: Probe start (only if not in group, groups print at end)
+            if not in_group:
+                print(f"  → {probe.name}", file=sys.stderr)
+            
             # Apply delay if specified
             if probe.delay is not None and probe.delay > 0:
                 import time
+                if probe.debug:
+                    print(f"[DEBUG] Waiting {probe.delay}s...", file=sys.stderr)
                 time.sleep(probe.delay)
             
             # Substitute variables in probe
@@ -179,8 +204,13 @@ class ProbeExecutor:
                     headers=probe_substituted.headers
                 )
             
-            # Execute request
-            response = self.http_client.execute(request_params)
+            # Execute request with timeout, retry, and debug
+            response = self.http_client.execute(
+                request_params,
+                timeout=probe.timeout,
+                retry=probe.retry,
+                debug=probe.debug
+            )
             
             # Validate response (with variable substitution in validation values)
             errors = []
@@ -196,6 +226,18 @@ class ProbeExecutor:
             if probe_substituted.output:
                 self.output_capture.capture(response, probe_substituted.output, context)
             
+            # Progress: Probe result
+            if len(errors) == 0:
+                if in_group:
+                    print(f"    ✓ {probe.name}", file=sys.stderr)
+                else:
+                    print(f"    ✓ Passed", file=sys.stderr)
+            else:
+                if in_group:
+                    print(f"    ✗ {probe.name} - Failed ({len(errors)} error(s))", file=sys.stderr)
+                else:
+                    print(f"    ✗ Failed ({len(errors)} error(s))", file=sys.stderr)
+            
             # Build result
             return ProbeResult(
                 probe_name=probe.name,
@@ -206,6 +248,10 @@ class ProbeExecutor:
             
         except ValueError as e:
             # Variable substitution error or missing variable
+            if in_group:
+                print(f"    ⊗ {probe.name} - Skipped: {e}", file=sys.stderr)
+            else:
+                print(f"    ⊗ Skipped: {e}", file=sys.stderr)
             return ProbeResult(
                 probe_name=probe.name,
                 success=False,
@@ -215,6 +261,11 @@ class ProbeExecutor:
             )
         except Exception as e:
             # HTTP or other error
+            if in_group:
+                print(f"    ✗ {probe.name} - Failed: {str(e)[:100]}", file=sys.stderr)
+            else:
+                print(f"    ✗ Failed: {str(e)[:100]}", file=sys.stderr)
+            
             from ..validation.base import ValidationError
             
             # Try to get substituted endpoint, fall back to original
@@ -259,7 +310,10 @@ class ProbeExecutor:
             variables=substitutor.substitute(probe.variables) if probe.variables else None,
             validation=probe.validation,  # Don't substitute validation spec structure
             output=probe.output,
-            delay=probe.delay
+            delay=probe.delay,
+            timeout=probe.timeout,
+            retry=probe.retry,
+            debug=probe.debug
         )
     
     def _validation_to_dict(self, validation: Any, substitutor: VariableSubstitutor) -> Dict[str, Any]:
@@ -284,5 +338,8 @@ class ProbeExecutor:
         if validation.body:
             # Substitute values in body validation
             result['body'] = substitutor.substitute(validation.body)
+        
+        if validation.response_time is not None:
+            result['response_time'] = validation.response_time
         
         return result

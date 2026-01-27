@@ -104,7 +104,10 @@ class ConfigParser:
             variables=probe_dict.get('variables'),
             validation=validation,
             output=probe_dict.get('output'),
-            delay=probe_dict.get('delay')
+            delay=probe_dict.get('delay'),
+            timeout=probe_dict.get('timeout'),
+            retry=probe_dict.get('retry'),
+            debug=probe_dict.get('debug', False)
         )
     
     def _parse_group(self, group_dict: Dict[str, Any]) -> Group:
@@ -134,5 +137,6 @@ class ConfigParser:
         return Validation(
             status=validation_dict.get('status'),
             headers=validation_dict.get('headers'),
-            body=validation_dict.get('body')
+            body=validation_dict.get('body'),
+            response_time=validation_dict.get('response_time')
         )

@@ -57,6 +57,22 @@ class ValidationEngine:
                 self.status_validator.validate(test_name, response, validation_spec['status'])
             )
         
+        # Response time validation
+        if 'response_time' in validation_spec:
+            max_time = validation_spec['response_time']
+            actual_time = getattr(response, 'elapsed_ms', None)
+            
+            if actual_time is not None and actual_time > max_time:
+                from .base import ValidationError
+                errors.append(ValidationError(
+                    test_name=test_name,
+                    validator="response_time",
+                    field="response_time",
+                    expected=f"<= {max_time}ms",
+                    actual=f"{actual_time}ms",
+                    message=f"Response time {actual_time}ms exceeds maximum {max_time}ms"
+                ))
+        
         # Header validations
         if 'headers' in validation_spec:
             errors.extend(self._validate_headers(test_name, response, validation_spec['headers']))
