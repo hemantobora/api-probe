@@ -1,0 +1,36 @@
+# Failing example: execution-scoped validations intentionally mismatched
+# Expected: FAIL ✗ (GraphQL capital mismatch via overrides)
+
+executions:
+  - name: "US East Context (Mismatched)"
+    vars:
+      - COUNTRY_CODE: "US"
+    validations: !include ../includes/validations-country-de.yaml
+
+  - name: "EU West Context (Mismatched)"
+    vars:
+      - COUNTRY_CODE: "DE"
+    validations: !include ../includes/validations-country-us.yaml
+
+probes:
+  - name: "GraphQL - Country Lookup"
+    type: graphql
+    endpoint: "https://countries.trevorblades.com/"
+    query: |
+      query GetCountry($code: ID!) {
+        country(code: $code) {
+          code
+          name
+          capital
+        }
+      }
+    variables:
+      code: "${COUNTRY_CODE}"
+    validation:
+      status: 200
+      body:
+        present:
+          - "data.country"
+          - "data.country.name"
+        absent:
+          - "errors"

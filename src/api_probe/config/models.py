@@ -46,6 +46,8 @@ class Execution:
     """Single execution context definition."""
     name: Optional[str] = None
     vars: List[Dict[str, str]] = field(default_factory=list)
+    # Optional per-execution validation overrides keyed by probe name
+    validations: Dict[str, Any] = field(default_factory=dict)
     
     def get_variables_dict(self) -> Dict[str, str]:
         """Convert vars list to dictionary.

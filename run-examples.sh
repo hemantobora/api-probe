@@ -126,6 +126,10 @@ run_test "Include with variable substitution" \
     "examples/passing/include-with-variables.yaml" \
     0
 
+run_test "Extensive example with validation substitutions" \
+    "examples/passing/extensive-fields.yml" \
+    0    
+
 echo -e "${YELLOW}=== FAILING EXAMPLES (Expected: Exit 1, Verbose) ===${NC}"
 echo
 
@@ -157,6 +161,10 @@ run_test "Multiple execution failures" \
 run_test "Auto-generated names in failures" \
     "examples/failing/auto-generated-names-failures.yaml" \
     1
+
+run_test "Validation override in execution context" \
+    "examples/failing/execution-overrides-failing.yaml" \
+    1    
 
 echo -e "${BLUE}================================${NC}"
 echo -e "${BLUE}Summary${NC}"

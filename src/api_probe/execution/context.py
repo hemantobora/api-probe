@@ -10,7 +10,7 @@ class ExecutionContext:
     Thread-safe for concurrent variable capture in parallel groups.
     """
     
-    def __init__(self, env_vars: Dict[str, str]):
+    def __init__(self, env_vars: Dict[str, str], validation_overrides: Dict[str, Any] = None):
         """Initialize execution context.
         
         Args:
@@ -18,6 +18,8 @@ class ExecutionContext:
         """
         self.variables: Dict[str, str] = env_vars.copy()
         self._lock = Lock()
+        # Per-execution validation overrides keyed by probe name
+        self.validation_overrides: Dict[str, Any] = validation_overrides or {}
     
     def set_variable(self, name: str, value: Any) -> None:
         """Set a variable (from output capture).

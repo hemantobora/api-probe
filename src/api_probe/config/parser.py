@@ -51,8 +51,9 @@ class ConfigParser:
         """
         name = exec_dict.get('name')
         vars_list = exec_dict.get('vars', [])
+        validations = exec_dict.get('validations', {})
         
-        return Execution(name=name, vars=vars_list)
+        return Execution(name=name, vars=vars_list, validations=validations)
     
     def _parse_probe(self, probe_dict: Dict[str, Any]) -> Probe:
         """Parse probe definition.

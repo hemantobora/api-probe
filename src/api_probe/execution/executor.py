@@ -101,7 +101,8 @@ class ProbeExecutor:
         # Generate name if not provided
         name = execution.name if execution.name else generate_name()
         
-        context = ExecutionContext(merged_vars)
+        # Carry any per-execution validation overrides
+        context = ExecutionContext(merged_vars, validation_overrides=getattr(execution, 'validations', {}))
         context.execution_name = name
         
         return context
@@ -282,12 +283,20 @@ class ProbeExecutor:
             
             # Validate response (with variable substitution in validation values)
             errors = []
-            if probe_substituted.validation:
-                validation_spec = self._validation_to_dict(probe_substituted.validation, substitutor)
+            # Determine validation spec: execution-level override or probe-level
+            validation_spec_dict = None
+            if hasattr(context, 'validation_overrides') and probe.name in context.validation_overrides:
+                # Use override and substitute variables inside
+                override_raw = context.validation_overrides[probe.name]
+                validation_spec_dict = substitutor.substitute(override_raw)
+            elif probe_substituted.validation:
+                validation_spec_dict = self._validation_to_dict(probe_substituted.validation, substitutor)
+            
+            if validation_spec_dict is not None:
                 errors = self.validation_engine.validate(
                     probe.name,
                     response,
-                    validation_spec
+                    validation_spec_dict
                 )
             
             # Capture output variables

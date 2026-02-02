@@ -116,8 +116,12 @@ class PathExtractor:
         Returns:
             True if advanced features detected
         """
-        # Advanced features: wildcards, filters, array slicing
-        advanced_patterns = ['[*]', '[?', '..', '[:', '@']
+        # Advanced features: wildcards, filters, array slicing, recursive
+        # Also treat $ at start as JSONPath
+        if path.startswith('$'):
+            return True
+        
+        advanced_patterns = ['[*]', '[?', '..', '[:', '@', '?(', ')]']
         return any(pattern in path for pattern in advanced_patterns)
     
     def _extract_jsonpath(self, data: dict, path: str) -> Any:

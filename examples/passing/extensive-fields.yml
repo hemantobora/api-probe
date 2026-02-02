@@ -1,0 +1,185 @@
+# Comprehensive example covering most of the schema features
+# Expected: ALL PASS ✓
+
+executions:
+  - name: "US East Context"
+    vars:
+      - REGION: "us-east-1"
+      - CLIENT_ID: "client-usa"
+      - FEATURE_FLAG: "true"
+      - COUNTRY_CODE: "US"
+    validations: !include ../includes/validations-country-us.yaml
+
+  - name: "EU West Context"
+    vars:
+      - REGION: "eu-west-1"
+      - CLIENT_ID: "client-eu"
+      - FEATURE_FLAG: "false"
+      - COUNTRY_CODE: "DE"
+    validations: !include ../includes/validations-country-de.yaml
+
+probes:
+  # Probe 1: Status pattern match (2xx)
+  - name: "Status Check 2xx"
+    type: rest
+    endpoint: "https://httpbin.org/status/204"
+    validation:
+      status: "2xx"
+
+  # Probe 2: JSON content with type and length validations
+  - name: "Get JSON and Validate"
+    type: rest
+    endpoint: "https://httpbin.org/json"
+    validation:
+      status: 200
+      body:
+        present:
+          - "slideshow"
+          - "slideshow.slides"
+        equals:
+          slideshow.title: "Sample Slide Show"
+        type:
+          slideshow: object
+          slideshow.title: string
+          slideshow.slides: array
+
+  # Probe 3: Include directive + body validations + output
+  - name: "Post Profile (Included Body)"
+    type: rest
+    endpoint: "https://httpbin.org/anything"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body: !include ../includes/user-profile.json
+    validation:
+      status: 200
+      headers:
+        present:
+          - "Content-Type"
+        matches:
+          Content-Length: "^[0-9]+$"
+        contains:
+          Content-Type: "json"
+      body:
+        present:
+          - "json.name"
+          - "json.address.city"
+        equals:
+          json.name: "John Doe"
+          json.address.city: "San Francisco"
+        contains:
+          json.email: "@example.com"
+        type:
+          json.age: integer
+        matches:
+          url: '^https://httpbin\.org/.+'
+    output:
+      PROFILE_EMAIL: "body.json.email"
+
+  # Probe 4: Echo headers; validate header round-trip
+  - name: "Echo Headers (Client ID)"
+    type: rest
+    endpoint: "https://httpbin.org/headers"
+    headers:
+      X-Client-Id: "${CLIENT_ID}"
+    validation:
+      status: 200
+      body:
+        equals:
+          headers.X-Client-Id: "${CLIENT_ID}"
+
+  # Probe 5: Variable substitution in body + range/type
+  - name: "Echo Variables and Validate"
+    type: rest
+    endpoint: "https://httpbin.org/anything"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      region: "${REGION}"
+      flag: "${FEATURE_FLAG}"
+      value: 42
+    validation:
+      status: 200
+      body:
+        equals:
+          json.region: "${REGION}"
+          json.flag: "${FEATURE_FLAG}"
+        range:
+          json.value: [1, 100]
+        type:
+          json.value: integer
+    output:
+      REGION_OUT: "body.json.region"
+
+  # Probe 6: Compute and store expression-based output
+  - name: "Compute Slide Count"
+    type: rest
+    endpoint: "https://httpbin.org/json"
+    validation:
+      status: 200
+    output:
+      SLIDE_COUNT: "len(body.slideshow.slides)"
+
+  # Probe 7: Conditional probe (ignored when slide count <= 2)
+  - name: "Conditional Probe (Ignored When Few Slides)"
+    type: rest
+    endpoint: "https://httpbin.org/get"
+    ignore: "${FEATURE_FLAG}"
+    validation:
+      status: 200
+
+  # Group 1: Parallel quick checks with response time
+  - group:
+      name: "Parallel Quick Checks"
+      probes:
+        - name: "Delay 1s"
+          type: rest
+          endpoint: "https://httpbin.org/delay/1"
+          validation:
+            status: 200
+            response_time: 3000  # ms
+
+        - name: "UUID check"
+          type: rest
+          endpoint: "https://httpbin.org/uuid"
+          validation:
+            status: 200
+            body:
+              present:
+                - "uuid"
+              matches:
+                uuid: "^[0-9a-fA-F-]{36}$"
+
+        - name: "IP check"
+          type: rest
+          endpoint: "https://httpbin.org/ip"
+          validation:
+            status: 200
+            body:
+              present:
+                - "origin"
+
+  # Probe 8: GraphQL query (public API)
+  - name: "GraphQL - Country Lookup"
+    type: graphql
+    endpoint: "https://countries.trevorblades.com/"
+    query: |
+      query GetCountry($code: ID!) {
+        country(code: $code) {
+          code
+          name
+          capital
+        }
+      }
+    variables:
+      code: "${COUNTRY_CODE}"
+    validation:
+      status: 200
+      body:
+        present:
+          - "data.country"
+          - "data.country.name"
+        absent:
+          - "errors"
+

@@ -1,0 +1,11 @@
+"GraphQL - Country Lookup":
+  status: 200
+  body:
+    present:
+      - "data.country"
+      - "data.country.name"
+    equals:
+      data.country.code: "${COUNTRY_CODE}"
+      data.country.capital: "Berlin"
+    absent:
+      - "errors"
