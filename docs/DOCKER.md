@@ -132,8 +132,6 @@ pipeline {
 
 **Simple Two-Job Pipeline:**
 
-See [examples/concourse/simple-pipeline.yml](../examples/concourse/simple-pipeline.yml) for a complete working example.
-
 ```yaml
 resources:
   - name: my-api-tests
@@ -171,14 +169,6 @@ jobs:
           args:
             - /tmp/build/*/my-api-tests/configs/api-tests.yaml
 ```
-
-**Multi-Stage Pipeline with Dependencies:**
-
-See [examples/concourse/advanced-pipeline.yml](../examples/concourse/advanced-pipeline.yml) for health checks → functional tests → integration tests.
-
-**Project Structure:**
-
-See [examples/concourse/PROJECT_STRUCTURE.md](../examples/concourse/PROJECT_STRUCTURE.md) for recommended GitHub repository layout.
 
 **Key Points:**
 - Place configs in GitHub repo under `configs/` or `probes/` directory
