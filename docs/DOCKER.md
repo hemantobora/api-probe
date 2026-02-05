@@ -130,29 +130,62 @@ pipeline {
 
 ### Concourse
 
+**Simple Two-Job Pipeline:**
+
+See [examples/concourse/simple-pipeline.yml](../examples/concourse/simple-pipeline.yml) for a complete working example.
+
 ```yaml
 resources:
-  - name: api-probe-image
-    type: docker-image
+  - name: my-api-tests
+    type: git
     source:
-      repository: api-probe
+      uri: https://github.com/mycompany/api-tests.git
+      branch: main
+  
+  - name: api-probe-image
+    type: registry-image
+    source:
+      repository: mycompany/api-probe
       tag: latest
 
 jobs:
-  - name: test-api
+  - name: run-tests
     plan:
+      # Get code from GitHub
+      - get: my-api-tests
+        trigger: true
+      
+      # Get Docker image
       - get: api-probe-image
-      - task: run-tests
+      
+      # Run tests
+      - task: execute-tests
         image: api-probe-image
-        config:
-          platform: linux
-          params:
-            BASE_URL: ((api-url))
-            CLIENT_ID: ((client-id))
-          run:
-            path: api-probe
-            args: ["/configs/tests.yaml"]
+        inputs:
+          - name: my-api-tests
+        params:
+          PROD_API_KEY: ((prod-api-key))
+          BASE_URL: https://api.example.com
+        run:
+          path: api-probe
+          args:
+            - /tmp/build/*/my-api-tests/configs/api-tests.yaml
 ```
+
+**Multi-Stage Pipeline with Dependencies:**
+
+See [examples/concourse/advanced-pipeline.yml](../examples/concourse/advanced-pipeline.yml) for health checks → functional tests → integration tests.
+
+**Project Structure:**
+
+See [examples/concourse/PROJECT_STRUCTURE.md](../examples/concourse/PROJECT_STRUCTURE.md) for recommended GitHub repository layout.
+
+**Key Points:**
+- Place configs in GitHub repo under `configs/` or `probes/` directory
+- Mount repo as input: `inputs: [name: my-api-tests]`
+- Config path: `/tmp/build/*/repo-name/path/to/config.yaml`
+- Use `((credentials))` for secrets (stored in Vault/CredHub)
+- Chain jobs with `passed: [previous-job]`
 
 ## Exit Codes
 
