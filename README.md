@@ -218,6 +218,7 @@ See [examples/passing/include-directive.yaml](examples/passing/include-directive
 - **[DOCKER.md](docs/DOCKER.md)** - Container usage and CI/CD integration
 - **[XML_SOAP_GUIDE.md](docs/XML_SOAP_GUIDE.md)** - XPath expressions and SOAP testing
 - **[INCLUDE_DIRECTIVE.md](docs/INCLUDE_DIRECTIVE.md)** - YAML include directive usage
+- **[PROMPT.md](docs/PROMPT.md)** - Generate configs with AI
 
 ## Examples
 
