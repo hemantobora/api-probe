@@ -13,6 +13,7 @@ from .config.parser import ConfigParser
 from .config.validator import ConfigValidator
 from .execution.executor import ProbeExecutor
 from .reporting.reporter import Reporter
+from .config.models import Config, Group, Probe
 
 
 def print_usage():
@@ -71,7 +72,7 @@ def validate_command(config_file: str) -> int:
             undefined = []
             
             for var in sorted(variables):
-                if var in os.environ:
+                if var in os.environ or validator._is_variable_defined_in_all_executions(var):
                     defined.append(var)
                 else:
                     undefined.append(var)
@@ -85,7 +86,11 @@ def validate_command(config_file: str) -> int:
             if undefined:
                 print("  ✗ Not defined:", file=sys.stderr)
                 for var in undefined:
-                    print(f"    • {var}", file=sys.stderr)
+                    exec_blocks = validator._get_execution_block_for_undefined_variable(var) if validator._is_variable_defined_in_any_execution(var) else []
+                    if exec_blocks:
+                        print(f"    • {var} (undefined in executions: {', '.join(exec_blocks)})", file=sys.stderr)
+                    else:
+                        print(f"    • {var}", file=sys.stderr)
                 print(file=sys.stderr)
         else:
             print("📋 No environment variables referenced", file=sys.stderr)
@@ -96,7 +101,7 @@ def validate_command(config_file: str) -> int:
         try:
             parser = ConfigParser()
             config = parser.parse(config_dict)
-            print(f"✓ Successfully parsed {len(config.probes)} probe(s)", file=sys.stderr)
+            print(f"✓ Successfully parsed {count_probes(config)} probe(s)", file=sys.stderr)
             
             if config.executions:
                 print(f"✓ Found {len(config.executions)} execution context(s)", file=sys.stderr)
@@ -125,6 +130,18 @@ def validate_command(config_file: str) -> int:
         traceback.print_exc(file=sys.stderr)
         return 2
 
+def count_probes(config: Config) -> int:
+    """Count total number of probes in the configuration, including nested groups."""
+    count = 0
+    stack = list(config.probes)  # Start with top-level probes list
+    while stack:
+        item = stack.pop()
+        if isinstance(item, Probe):
+            count += 1
+        elif isinstance(item, Group):
+            stack.extend(list(item.probes))
+    
+    return count
 
 def run_command(config_file: str) -> int:
     """Execute run command (normal probe execution).

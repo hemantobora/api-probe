@@ -1,5 +1,6 @@
 """Configuration validator and analyzer."""
 
+from collections import defaultdict
 import re
 from typing import Any, Dict, List, Set, Tuple
 
@@ -14,6 +15,7 @@ class ConfigValidator:
         self.errors: List[str] = []
         self.warnings: List[str] = []
         self.variables_found: Set[str] = set()
+        self.variables_defined: Dict[str, Set[str]] = defaultdict(set)
     
     def validate(self, config_dict: Dict[str, Any]) -> Tuple[bool, List[str], List[str]]:
         """Validate configuration structure.
@@ -59,12 +61,13 @@ class ConfigValidator:
             Set of variable names found
         """
         self.variables_found = set()
-        
+        self.variables_defined = defaultdict(set)
         # Extract from executions block
         if 'executions' in config_dict:
             for execution in config_dict.get('executions', []):
+                self._extract_defined_vars_from_executions(execution)
                 for var_dict in execution.get('vars', []):
-                    for key, value in var_dict.items():
+                    for _, value in var_dict.items():
                         if isinstance(value, str):
                             self._extract_vars_from_string(value)
         
@@ -170,3 +173,24 @@ class ConfigValidator:
         for match in self.VAR_PATTERN.finditer(text):
             var_name = match.group(1)
             self.variables_found.add(var_name)
+
+    def _extract_defined_vars_from_executions(self, execution: Dict[str, Any]) -> None:
+        """Extract variables defined with concrete values in an execution block."""
+        execution_name = execution.get('name', 'unknown')
+        for var_dict in execution.get('vars', []):
+            for key, value in var_dict.items():
+                if isinstance(value, str) and self.VAR_PATTERN.fullmatch(value):
+                    continue  # value is from env placeholder like ${PROD_KEY}
+                self.variables_defined[execution_name].add(key)
+
+    def _is_variable_defined_in_all_executions(self, var_name: str) -> bool:
+        """Check if a variable is defined with a concrete value in all executions."""
+        return all(var_name in vars_set for vars_set in self.variables_defined.values())
+    
+    def _is_variable_defined_in_any_execution(self, var_name: str) -> bool:
+        """Check if a variable is defined with a concrete value in any execution."""
+        return any(var_name in vars_set for vars_set in self.variables_defined.values())
+    
+    def _get_execution_block_for_undefined_variable(self, var_name: str) -> Set[str]:
+        """Get execution blocks where a variable is not defined."""
+        return {exec_name for exec_name, vars_set in self.variables_defined.items() if var_name not in vars_set}
