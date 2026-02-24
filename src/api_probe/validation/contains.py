@@ -80,7 +80,7 @@ class ContainsValidator(Validator):
                         message=f"Field '{path}' is {type(actual).__name__}, 'contains' only works on strings and arrays"
                     ))
                     
-            except (KeyError, IndexError, ValueError) as e:
+            except (KeyError, IndexError, ValueError, TypeError) as e:
                 errors.append(ValidationError(
                     test_name=test_name,
                     validator="contains",

@@ -38,10 +38,10 @@ class AbsentValidator(Validator):
                     validator="absent",
                     field=path,
                     expected="<field absent>",
-                    actual=f"<field present: {value}>",
+                    actual=f"<field present: {str(value)[:100]}>",
                     message=f"Field '{path}' should not exist but is present"
                 ))
-            except (KeyError, IndexError, ValueError):
+            except (KeyError, IndexError, ValueError, TypeError):
                 # Field doesn't exist - that's what we want
                 pass
         

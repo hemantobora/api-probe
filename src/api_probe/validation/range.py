@@ -81,7 +81,7 @@ class RangeValidator(Validator):
                         message=f"Field '{path}' value {actual} is above maximum {max_val}"
                     ))
                     
-            except (KeyError, IndexError, ValueError) as e:
+            except (KeyError, IndexError, ValueError, TypeError) as e:
                 errors.append(ValidationError(
                     test_name=test_name,
                     validator="range",

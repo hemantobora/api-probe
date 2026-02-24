@@ -44,11 +44,10 @@ class LengthValidator(Validator):
         
         for path, expected in spec.items():
             try:
-                # For root-level paths starting with $, don't add body. prefix
-                if path.startswith('$'):
-                    extract_path = path
-                else:
-                    extract_path = f"body.{path}"
+                # Pass path directly - extractor handles all styles:
+                # dot notation (data.plans), array index (plans[0].id),
+                # JSONPath ($.data.plans), root array ($[0].id)
+                extract_path = path
                 
                 value = self.extractor.extract(response, extract_path)
                 
@@ -70,7 +69,10 @@ class LengthValidator(Validator):
                 if isinstance(expected, list):
                     # Range: [min, max]
                     min_len, max_len = expected[0], expected[1]
-                    if not (min_len <= actual_length <= max_len):
+                    too_short = min_len is not None and actual_length < min_len
+                    too_long = max_len is not None and actual_length > max_len
+                    
+                    if too_short or too_long:
                         errors.append(ValidationError(
                             test_name=test_name,
                             validator="length",

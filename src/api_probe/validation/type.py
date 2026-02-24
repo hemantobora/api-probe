@@ -69,7 +69,7 @@ class TypeValidator(Validator):
                         actual=actual_type,
                         message=f"Field '{path}': expected type '{expected_type}', got '{actual_type}'"
                     ))
-            except (KeyError, IndexError, ValueError) as e:
+            except (KeyError, IndexError, ValueError, TypeError) as e:
                 errors.append(ValidationError(
                     test_name=test_name,
                     validator="type",

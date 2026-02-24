@@ -43,7 +43,7 @@ class EqualsValidator(Validator):
                         actual=actual,
                         message=f"Field '{path}': expected {expected!r}, got {actual!r}"
                     ))
-            except (KeyError, IndexError, ValueError) as e:
+            except (KeyError, IndexError, ValueError, TypeError) as e:
                 errors.append(ValidationError(
                     test_name=test_name,
                     validator="equals",

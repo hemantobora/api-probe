@@ -33,7 +33,7 @@ class PresentValidator(Validator):
             try:
                 value = self.extractor.extract(response, path)
                 # If extraction succeeded, field exists (even if None)
-            except (KeyError, IndexError, ValueError) as e:
+            except (KeyError, IndexError, ValueError, TypeError) as e:
                 errors.append(ValidationError(
                     test_name=test_name,
                     validator="present",

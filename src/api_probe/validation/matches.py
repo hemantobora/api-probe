@@ -56,7 +56,7 @@ class MatchesValidator(Validator):
                         actual=actual,
                         message=f"Field '{path}' does not match pattern /{pattern}/"
                     ))
-            except (KeyError, IndexError, ValueError) as e:
+            except (KeyError, IndexError, ValueError, TypeError) as e:
                 errors.append(ValidationError(
                     test_name=test_name,
                     validator="matches",
