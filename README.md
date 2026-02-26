@@ -300,10 +300,15 @@ See [GETTING_STARTED.md](docs/GETTING_STARTED.md) for details.
 
 ## Status
 
-**Version:** 2.4.0  
+**Version:** 2.5.0  
 **Status:** Production Ready
 
 ## Version History
+
+- **v2.5.0**
+  - Added success reporting for probe execution
+  - Executing probes in separate threads per execution block
+  - Fixed the documentation in [DOCKER.md](./docs/DOCKER.md)
 
 - **v2.4.0**
   - Added expression evaluation in `output` field (len, has, empty functions)

@@ -167,7 +167,7 @@ jobs:
         run:
           path: api-probe
           args:
-            - /tmp/build/*/my-api-tests/configs/api-tests.yaml
+            - my-api-tests/path/to/your/probe.yaml
 ```
 
 **Key Points:**
