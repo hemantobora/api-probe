@@ -9,9 +9,9 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-echo -e "${BLUE}================================${NC}"
-echo -e "${BLUE}Running All Examples${NC}"
-echo -e "${BLUE}================================${NC}"
+printf "${BLUE}================================${NC}\n"
+printf "${BLUE}Running All Examples${NC}\n"
+printf "${BLUE}================================${NC}\n"
 echo
 
 # Set dummy environment variables for examples that need them
@@ -41,7 +41,7 @@ run_test() {
     local file="$2"
     local expected_exit="$3"
     
-    echo -e "${BLUE}Testing: ${name}${NC}"
+    printf "${BLUE}Testing: ${name}${NC}\n"
     echo "  File: $file"
     
     if ./run.sh "$file" > /tmp/test_output.txt 2>&1; then
@@ -51,10 +51,10 @@ run_test() {
     fi
     
     if [ "$actual_exit" -eq "$expected_exit" ]; then
-        echo -e "${GREEN}  ✓ PASS${NC} (exit code: $actual_exit)"
+        printf "${GREEN}  ✓ PASS${NC} (exit code: $actual_exit)\n"
         ((PASS++))
     else
-        echo -e "${RED}  ✗ FAIL${NC} (expected exit $expected_exit, got $actual_exit)"
+        printf "${RED}  ✗ FAIL${NC} (expected exit $expected_exit, got $actual_exit)\n"
         echo "  Output:"
         cat /tmp/test_output.txt | sed 's/^/    /'
         ((FAIL++))
@@ -62,7 +62,7 @@ run_test() {
     echo
 }
 
-echo -e "${YELLOW}=== PASSING EXAMPLES (Expected: Exit 0, Silent) ===${NC}"
+printf "${YELLOW}=== PASSING EXAMPLES (Expected: Exit 0, Silent) ===${NC}\n"
 echo
 
 # Passing tests - should all exit 0 (silent success)
@@ -130,7 +130,7 @@ run_test "Extensive example with validation substitutions" \
     "examples/passing/extensive-fields.yml" \
     0    
 
-echo -e "${YELLOW}=== FAILING EXAMPLES (Expected: Exit 1, Verbose) ===${NC}"
+printf "${YELLOW}=== FAILING EXAMPLES (Expected: Exit 1, Verbose) ===${NC}\n"
 echo
 
 # Failing tests - should all exit 1 (verbose failure)
@@ -166,17 +166,17 @@ run_test "Validation override in execution context" \
     "examples/failing/execution-overrides-failing.yaml" \
     1    
 
-echo -e "${BLUE}================================${NC}"
-echo -e "${BLUE}Summary${NC}"
-echo -e "${BLUE}================================${NC}"
-echo -e "Tests Passed: ${GREEN}${PASS}${NC}"
-echo -e "Tests Failed: ${RED}${FAIL}${NC}"
+printf "${BLUE}================================${NC}\n"
+printf "${BLUE}Summary${NC}\n"
+printf "${BLUE}================================${NC}\n"
+printf "Tests Passed: ${GREEN}${PASS}${NC}\n"
+printf "Tests Failed: ${RED}${FAIL}${NC}\n"
 echo
 
 if [ $FAIL -eq 0 ]; then
-    echo -e "${GREEN}✓ ALL EXAMPLES PASSED${NC}"
+    printf "${GREEN}✓ ALL EXAMPLES PASSED${NC}\n"
     exit 0
 else
-    echo -e "${RED}✗ SOME EXAMPLES FAILED${NC}"
+    printf "${RED}✗ SOME EXAMPLES FAILED${NC}\n"
     exit 1
 fi

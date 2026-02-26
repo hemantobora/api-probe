@@ -1,6 +1,5 @@
 """Main probe executor - orchestrates entire execution flow."""
 
-import io
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -17,6 +16,23 @@ from ..http.builder import RequestBuilder
 from ..http.client import HTTPClient
 from ..validation.engine import ValidationEngine
 from ..validation.extractor import PathExtractor
+
+
+# Global print lock - ensures no two threads interleave lines on stderr
+_print_lock = threading.Lock()
+
+
+def _println(*args, **kwargs):
+    """Thread-safe print to stderr."""
+    with _print_lock:
+        print(*args, file=sys.stderr, **kwargs)
+
+
+def _print_block(lines: List[str]):
+    """Print multiple lines atomically - no other thread can interleave."""
+    with _print_lock:
+        for line in lines:
+            print(line, file=sys.stderr)
 
 
 class ProbeExecutor:
@@ -37,9 +53,10 @@ class ProbeExecutor:
     def execute(self, config: Config) -> ExecutionResult:
         """Execute all probes from configuration.
 
-        Multiple executions run concurrently. Progress output per execution
-        is buffered and flushed atomically in run-index order so lines never
-        interleave.
+        Multiple executions run concurrently with live progress output.
+        Progress lines are printed immediately under a lock so they never
+        interleave. Each probe's start + result lines are printed as a
+        single atomic block.
 
         Args:
             config: Parsed configuration
@@ -52,63 +69,57 @@ class ProbeExecutor:
         if config.executions:
             self._execute_concurrent(config, execution_result)
         else:
-            # Single run with env vars - no concurrency needed
             env_vars = get_env_variables()
             context = ExecutionContext(env_vars)
-
-            buf = io.StringIO()
-            buf.write(f"\n▶ Executing probes...\n")
-            buf.write("=" * 60 + "\n")
-
-            run_result = self._execute_run(config, context, 0, buf)
+            _println(f"\n▶ Executing probes...")
+            _println("=" * 60)
+            run_result = self._execute_run(config, context, 0)
             execution_result.run_results.append(run_result)
-
-            sys.stderr.write(buf.getvalue())
 
         return execution_result
 
-    def _execute_concurrent(self, config: Config, execution_result: ExecutionResult) -> None:
-        """Run all executions concurrently, flush output in order.
+    # ------------------------------------------------------------------
+    # Concurrent executions
+    # ------------------------------------------------------------------
 
-        Each execution writes progress into its own StringIO buffer.
-        Results arrive via a dict keyed by run_index; the main thread
-        flushes them in ascending order so output is never interleaved.
+    def _execute_concurrent(self, config: Config, execution_result: ExecutionResult) -> None:
+        """Run all executions concurrently with live progress.
+
+        Execution headers are printed as they start. Probe lines within
+        each execution are printed live but atomically (start + result
+        together). RunResults are collected and appended in run-index
+        order so ExecutionResult is always deterministic.
 
         Args:
             config: Parsed configuration
-            execution_result: Accumulator for RunResults (mutated in place)
+            execution_result: Accumulator mutated in place
         """
         num = len(config.executions)
-
-        # Pre-build contexts so name generation is deterministic
         contexts = [
             (i, self._create_context_from_execution(ex))
             for i, ex in enumerate(config.executions)
         ]
 
-        # Collect (run_index, buffer, run_result) from each thread
-        completed: Dict[int, tuple] = {}
+        run_results: Dict[int, RunResult] = {}
         lock = threading.Lock()
 
         def run_one(run_index: int, context: ExecutionContext):
-            buf = io.StringIO()
-            buf.write(f"\n▶ Executing: {context.execution_name}\n")
-            buf.write("=" * 60 + "\n")
-            run_result = self._execute_run(config, context, run_index, buf)
+            _print_block([
+                f"\n▶ Executing: {context.execution_name}",
+                "=" * 60,
+            ])
+            run_result = self._execute_run(config, context, run_index)
             with lock:
-                completed[run_index] = (buf.getvalue(), run_result)
+                run_results[run_index] = run_result
 
         with ThreadPoolExecutor(max_workers=num) as pool:
             futures = [pool.submit(run_one, i, ctx) for i, ctx in contexts]
-            # Wait for all futures; exceptions propagate here
             for f in as_completed(futures):
                 f.result()
 
-        # Flush output and collect results in original order
+        # Append results in original execution order
         for i in range(num):
-            output_text, run_result = completed[i]
-            sys.stderr.write(output_text)
-            execution_result.run_results.append(run_result)
+            execution_result.run_results.append(run_results[i])
 
     # ------------------------------------------------------------------
     # Context creation
@@ -145,15 +156,13 @@ class ProbeExecutor:
         config: Config,
         context: ExecutionContext,
         run_index: int,
-        buf: io.StringIO,
     ) -> RunResult:
-        """Execute all probes in a single run context.
+        """Execute all probes in a single run context sequentially.
 
         Args:
             config: Configuration
             context: Execution context with variables
-            run_index: Index of this run (for reporting)
-            buf: Output buffer - all progress lines written here
+            run_index: Index of this run
 
         Returns:
             Run result with all probe results
@@ -165,41 +174,40 @@ class ProbeExecutor:
             if isinstance(item, Probe):
                 if self._should_ignore(item, context):
                     continue
-                probe_result = self._execute_probe(item, context, buf=buf)
+                probe_result = self._execute_probe(item, context)
                 run_result.probe_results.append(probe_result)
             elif isinstance(item, Group):
                 if self._should_ignore(item, context):
                     continue
-                group_results = self._execute_group(item, context, buf=buf)
+                group_results = self._execute_group(item, context)
                 run_result.probe_results.extend(group_results)
 
         return run_result
 
     # ------------------------------------------------------------------
-    # Group execution (probes within a group run in parallel)
+    # Group execution
     # ------------------------------------------------------------------
 
     def _execute_group(
         self,
         group: Group,
         context: ExecutionContext,
-        buf: io.StringIO,
     ) -> List[ProbeResult]:
-        """Execute probes in a group in parallel, collecting output safely.
+        """Execute probes in a group in parallel with live progress.
 
-        Each probe gets its own sub-buffer; results are appended to buf
-        in original probe order after all finish.
+        The group header is printed immediately. Each probe prints its
+        start + result atomically as it completes. Results are returned
+        in original probe order.
 
         Args:
-            group: Group of probes to execute in parallel
+            group: Group of probes
             context: Execution context
-            buf: Parent output buffer
 
         Returns:
-            List of probe results (order preserved)
+            List of probe results in original order
         """
         group_name = group.name if group.name else "Parallel Group"
-        buf.write(f"  [{group_name} - {len(group.probes)} probe(s)]:\n")
+        _println(f"  [{group_name} - {len(group.probes)} probe(s)]:")
 
         probes_to_run = [
             p for p in group.probes if not self._should_ignore(p, context)
@@ -208,14 +216,11 @@ class ProbeExecutor:
         if not probes_to_run:
             return []
 
-        # Each probe writes into its own sub-buffer
-        sub_bufs: Dict[int, io.StringIO] = {i: io.StringIO() for i in range(len(probes_to_run))}
         results: Dict[int, ProbeResult] = {}
         lock = threading.Lock()
 
         def run_probe(idx: int, probe: Probe):
-            sub_buf = sub_bufs[idx]
-            result = self._execute_probe(probe, context, in_group=True, buf=sub_buf)
+            result = self._execute_probe(probe, context, in_group=True)
             with lock:
                 results[idx] = result
 
@@ -224,13 +229,7 @@ class ProbeExecutor:
             for f in as_completed(futures):
                 f.result()
 
-        # Flush sub-buffers and collect results in original order
-        ordered_results = []
-        for i in range(len(probes_to_run)):
-            buf.write(sub_bufs[i].getvalue())
-            ordered_results.append(results[i])
-
-        return ordered_results
+        return [results[i] for i in range(len(probes_to_run))]
 
     # ------------------------------------------------------------------
     # Single probe execution
@@ -241,32 +240,29 @@ class ProbeExecutor:
         probe: Probe,
         context: ExecutionContext,
         in_group: bool = False,
-        buf: io.StringIO = None,
     ) -> ProbeResult:
-        """Execute a single probe.
+        """Execute a single probe with live atomic progress output.
 
-        All progress lines are written to buf (never directly to stderr).
+        The probe's start line and its pass/fail result line are printed
+        together as a single atomic block so no other thread can insert
+        a line between them.
 
         Args:
             probe: Probe definition
             context: Execution context
             in_group: Whether this probe is part of a parallel group
-            buf: Output buffer
 
         Returns:
             Probe result
         """
-        if buf is None:
-            buf = io.StringIO()
-
         try:
-            if not in_group:
-                buf.write(f"  → {probe.name}\n")
-
             if probe.delay is not None and probe.delay > 0:
                 import time
+                # Print delay notice immediately so user sees the wait
+                if not in_group:
+                    _println(f"  → {probe.name} (waiting {probe.delay}s...)")
                 if probe.debug:
-                    buf.write(f"[DEBUG] Waiting {probe.delay}s...\n")
+                    _println(f"[DEBUG] Waiting {probe.delay}s...")
                 time.sleep(probe.delay)
 
             substitutor = VariableSubstitutor(context.variables)
@@ -286,6 +282,13 @@ class ProbeExecutor:
                     variables=probe_substituted.variables,
                     headers=probe_substituted.headers,
                 )
+
+            # Print "starting" line before the HTTP call so the user sees
+            # the probe name immediately, not only after the response arrives
+            if not in_group:
+                _println(f"  → {probe.name}")
+            else:
+                _println(f"    → {probe.name}")
 
             response = self.http_client.execute(
                 request_params,
@@ -308,16 +311,17 @@ class ProbeExecutor:
             if probe_substituted.output:
                 self.output_capture.capture(response, probe_substituted.output, context)
 
+            # Print result line immediately after execution completes
             if len(errors) == 0:
                 if in_group:
-                    buf.write(f"    ✓ {probe.name}\n")
+                    _println(f"    ✓ {probe.name}")
                 else:
-                    buf.write(f"    ✓ Passed\n")
+                    _println(f"    ✓ Passed")
             else:
                 if in_group:
-                    buf.write(f"    ✗ {probe.name} - Failed ({len(errors)} error(s))\n")
+                    _println(f"    ✗ {probe.name} - Failed ({len(errors)} error(s))")
                 else:
-                    buf.write(f"    ✗ Failed ({len(errors)} error(s))\n")
+                    _println(f"    ✗ Failed ({len(errors)} error(s))")
 
             return ProbeResult(
                 probe_name=probe.name,
@@ -328,9 +332,9 @@ class ProbeExecutor:
 
         except ValueError as e:
             if in_group:
-                buf.write(f"    ⊗ {probe.name} - Skipped: {e}\n")
+                _println(f"    ⊗ {probe.name} - Skipped: {e}")
             else:
-                buf.write(f"    ⊗ Skipped: {e}\n")
+                _println(f"    ⊗ Skipped: {e}")
             return ProbeResult(
                 probe_name=probe.name,
                 success=False,
@@ -341,9 +345,9 @@ class ProbeExecutor:
 
         except Exception as e:
             if in_group:
-                buf.write(f"    ✗ {probe.name} - Failed: {str(e)[:100]}\n")
+                _println(f"    ✗ {probe.name} - Failed: {str(e)[:100]}")
             else:
-                buf.write(f"    ✗ Failed: {str(e)[:100]}\n")
+                _println(f"    ✗ Failed: {str(e)[:100]}")
 
             from ..validation.base import ValidationError
 
