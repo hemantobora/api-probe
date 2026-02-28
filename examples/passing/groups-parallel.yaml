@@ -9,7 +9,7 @@ probes:
     validation:
       status: 200
     output:
-      REQUEST_ID_1: "body.headers.X-Amzn-Trace-Id"
+      REQUEST_ID_1: "url"
   
   # Group 1: Small parallel group
   - group:
@@ -33,7 +33,7 @@ probes:
     validation:
       status: 200
     output:
-      UUID: "body.uuid"
+      UUID: "uuid"
   
   # Group 2: Larger parallel group with different API calls
   - group:

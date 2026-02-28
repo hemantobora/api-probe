@@ -31,6 +31,7 @@ class Probe:
     retry: Optional[Dict[str, Any]] = None  # Retry configuration
     debug: bool = False  # Print request/response details to stderr
     ignore: Optional[Union[bool, str]] = None  # Skip this probe if true or "${VAR}" evaluates to true
+    verify: bool = True  # Verify SSL/TLS certificates (set to false for self-signed certs)
 
 
 @dataclass

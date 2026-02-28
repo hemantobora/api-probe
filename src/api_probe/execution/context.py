@@ -23,15 +23,17 @@ class ExecutionContext:
     
     def set_variable(self, name: str, value: Any) -> None:
         """Set a variable (from output capture).
-        
+
         Thread-safe for concurrent writes from parallel probes.
-        
+        Type is preserved as-is — output capture may store int, bool,
+        float, or None depending on what the response contained.
+
         Args:
             name: Variable name
-            value: Variable value (will be converted to string)
+            value: Variable value
         """
         with self._lock:
-            self.variables[name] = str(value)
+            self.variables[name] = value
     
     def get_variable(self, name: str) -> str:
         """Get a variable value.

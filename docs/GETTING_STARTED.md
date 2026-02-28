@@ -140,7 +140,7 @@ probes:
     validation:
       status: 200
     output:
-      ACCESS_TOKEN: "body.access_token"
+      ACCESS_TOKEN: "access_token"
   
   # Second probe - uses captured token
   - name: "Get Profile"

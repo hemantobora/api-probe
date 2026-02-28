@@ -102,8 +102,8 @@ probes:
         range:
           json.user.age: [18, 100]
     output:
-      USER_NAME: "body.json.user.name"
-      USER_EMAIL: "body.json.user.email"
+      USER_NAME: "json.user.name"
+      USER_EMAIL: "json.user.email"
   
   # Probe 3: UUID and pattern matching
   - name: "UUID and Pattern Validation"
@@ -195,7 +195,7 @@ probes:
           json.boolean_field: boolean
           json.array_field: array
           json.object_field: object
-          json.null_field: None  # IMPORTANT: Quote "null" to pass as string, to represent null or None type
+          json.null_field: "null"  # Must be quoted string to represent null type
   
   # Probe 7: Range validation with bounds
   - name: "Numeric Range Validation"

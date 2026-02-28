@@ -76,7 +76,7 @@ probes:
         equals:
           account_id: "${ACCOUNT}"  # Variable substitution in validation!
     output:
-      TOKEN: "body.access_token"
+      TOKEN: "access_token"
       HAS_PREMIUM: "has(body.premium)"  # Expression evaluation
   
   - name: "Get Profile"
@@ -304,6 +304,17 @@ See [GETTING_STARTED.md](docs/GETTING_STARTED.md) for details.
 **Status:** Production Ready
 
 ## Version History
+
+- **v2.6.0**
+  - Added `verify` field for per-probe SSL/TLS certificate validation skip
+  - Added `!int`, `!bool`, `!float`, `!str` type coercion tags for typed variable substitution
+  - Unified output path convention — bare paths for body fields, `headers.` prefix for response headers
+  - Fixed session isolation — fresh HTTP session per thread (no connection pool sharing)
+  - Fixed debug output through print lock (no interleaving in concurrent executions)
+  - Added response time display for every probe in report output
+  - Added duplicate probe name detection (warning on validate)
+  - Added retry config validation (`max_attempts` >= 1, `delay` >= 0)
+  - Fixed skipped probe symbol consistency — `⊗` used in both live progress and final report
 
 - **v2.5.0**
   - Added success reporting for probe execution

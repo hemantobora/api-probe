@@ -295,6 +295,7 @@ class ProbeExecutor:
                 timeout=probe.timeout,
                 retry=probe.retry,
                 debug=probe.debug,
+                verify=probe_substituted.verify,
             )
 
             errors = []
@@ -328,6 +329,7 @@ class ProbeExecutor:
                 success=len(errors) == 0,
                 errors=errors,
                 endpoint=probe_substituted.endpoint,
+                response_time_ms=getattr(response, 'elapsed_ms', None),
             )
 
         except ValueError as e:
@@ -424,6 +426,7 @@ class ProbeExecutor:
             retry=probe.retry,
             debug=probe.debug,
             ignore=probe.ignore,
+            verify=probe.verify,
         )
 
     def _validation_to_dict(self, validation: Any, substitutor: VariableSubstitutor) -> Dict[str, Any]:

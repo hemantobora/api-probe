@@ -10,7 +10,7 @@ probes:
     validation:
       status: 200
     output:
-      UUID1: "body.uuid"
+      UUID1: "uuid"
   
   - name: "Sequential Test 2 - Use Variable from Test 1"
     type: rest
@@ -31,7 +31,7 @@ probes:
     validation:
       status: 200
     output:
-      UUID2: "body.uuid"
+      UUID2: "uuid"
   
   # Probe 2: Parallel group - probes run simultaneously
   - group:
@@ -42,7 +42,7 @@ probes:
           validation:
             status: 200
           output:
-            PARALLEL_A_URL: "body.url"
+            PARALLEL_A_URL: "url"
         
         - name: "Parallel B - Delay 1 sec"
           type: rest
@@ -50,7 +50,7 @@ probes:
           validation:
             status: 200
           output:
-            PARALLEL_B_URL: "body.url"
+            PARALLEL_B_URL: "url"
         
         - name: "Parallel C - Delay 1 sec"
           type: rest
@@ -58,7 +58,7 @@ probes:
           validation:
             status: 200
           output:
-            PARALLEL_C_URL: "body.url"
+            PARALLEL_C_URL: "url"
   
   # Probe 3: Verify variables from parallel group are available
   - name: "Sequential After Parallel - Use Parallel Variables"

@@ -109,7 +109,8 @@ class ConfigParser:
             timeout=probe_dict.get('timeout'),
             retry=probe_dict.get('retry'),
             debug=probe_dict.get('debug', False),
-            ignore=probe_dict.get('ignore')
+            ignore=probe_dict.get('ignore'),
+            verify=probe_dict.get('verify', True)
         )
     
     def _parse_group(self, group_dict: Dict[str, Any]) -> Group:

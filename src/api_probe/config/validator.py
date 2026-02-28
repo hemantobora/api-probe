@@ -95,52 +95,69 @@ class ConfigValidator:
                 self.errors.append(f"Execution {i+1}: 'vars' must be an array")
     
     def _validate_probes(self, probes: List[Any]) -> None:
-        """Validate probes array."""
+        """Validate probes array, checking for duplicate names."""
+        seen_names: Dict[str, int] = {}
+
         for i, item in enumerate(probes):
             if not isinstance(item, dict):
                 self.errors.append(f"Probe {i+1}: must be an object")
                 continue
-            
+
             if 'group' in item:
-                self._validate_group(item['group'], i+1)
+                self._validate_group(item['group'], i+1, seen_names)
             else:
-                self._validate_probe(item, i+1)
+                self._validate_probe(item, i+1, seen_names)
     
-    def _validate_group(self, group: Dict, index: int) -> None:
+    def _validate_group(self, group: Dict, index: int, seen_names: Dict[str, int] = None) -> None:
         """Validate a group."""
+        if seen_names is None:
+            seen_names = {}
+
         if 'probes' not in group:
             self.errors.append(f"Group {index}: missing required 'probes' field")
             return
-        
+
         if not isinstance(group['probes'], list):
             self.errors.append(f"Group {index}: 'probes' must be an array")
             return
-        
+
         if len(group['probes']) == 0:
             self.warnings.append(f"Group {index}: 'probes' array is empty")
-        
+
         for j, probe in enumerate(group['probes']):
-            self._validate_probe(probe, f"{index}.{j+1}")
+            self._validate_probe(probe, f"{index}.{j+1}", seen_names)
     
-    def _validate_probe(self, probe: Dict, index: Any) -> None:
+    def _validate_probe(self, probe: Dict, index: Any, seen_names: Dict[str, int] = None) -> None:
         """Validate a single probe."""
+        if seen_names is None:
+            seen_names = {}
+
         # Required fields
         if 'name' not in probe:
             self.errors.append(f"Probe {index}: missing required 'name' field")
-        
+        else:
+            name = probe['name']
+            if name in seen_names:
+                self.warnings.append(
+                    f"Probe {index}: duplicate name '{name}' (first seen at probe {seen_names[name]}). "
+                    f"Output variable capture and reporting may behave unexpectedly."
+                )
+            else:
+                seen_names[name] = index
+
         if 'type' not in probe:
             self.errors.append(f"Probe {index}: missing required 'type' field")
         elif probe['type'] not in ['rest', 'graphql']:
             self.errors.append(f"Probe {index}: 'type' must be 'rest' or 'graphql'")
-        
+
         if 'endpoint' not in probe:
             self.errors.append(f"Probe {index}: missing required 'endpoint' field")
-        
+
         # Type-specific validation
         if probe.get('type') == 'graphql':
             if 'query' not in probe:
                 self.errors.append(f"Probe {index}: GraphQL probe must have 'query' field")
-        
+
         # REST with body requires Content-Type
         if probe.get('type') == 'rest' and 'body' in probe:
             headers = probe.get('headers', {})
@@ -148,7 +165,7 @@ class ConfigValidator:
                 self.errors.append(
                     f"Probe {index}: REST probe with body must have Content-Type header"
                 )
-        
+
         # Validate delay if present
         if 'delay' in probe:
             delay = probe['delay']
@@ -156,6 +173,32 @@ class ConfigValidator:
                 self.errors.append(f"Probe {index}: 'delay' must be a number")
             elif delay < 0:
                 self.warnings.append(f"Probe {index}: negative delay will be ignored")
+
+        # Validate verify if present (fix #9 / #12)
+        if 'verify' in probe and not isinstance(probe['verify'], bool):
+            self.warnings.append(
+                f"Probe {index}: 'verify' should be a boolean (true/false), "
+                f"got {type(probe['verify']).__name__!r} — defaulting to true"
+            )
+
+        # Validate retry config (fix #12)
+        if 'retry' in probe:
+            retry = probe['retry']
+            if not isinstance(retry, dict):
+                self.errors.append(f"Probe {index}: 'retry' must be an object")
+            else:
+                if 'max_attempts' in retry:
+                    val = retry['max_attempts']
+                    if not isinstance(val, int) or val < 1:
+                        self.errors.append(
+                            f"Probe {index}: 'retry.max_attempts' must be an integer >= 1, got {val!r}"
+                        )
+                if 'delay' in retry:
+                    val = retry['delay']
+                    if not isinstance(val, (int, float)) or val < 0:
+                        self.errors.append(
+                            f"Probe {index}: 'retry.delay' must be a non-negative number, got {val!r}"
+                        )
     
     def _extract_vars_from_value(self, value: Any) -> None:
         """Recursively extract variables from any value."""

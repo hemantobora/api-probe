@@ -27,7 +27,7 @@ probes:
         absent:
           - "errors"
     output:
-      COUNTRY_CODE: "body.data.countries[0].code"
+      COUNTRY_CODE: "data.countries[0].code"
   
   # Probe 2: GraphQL with variables
   - name: "GraphQL Query with Variables"

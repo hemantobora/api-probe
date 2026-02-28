@@ -1,7 +1,6 @@
 # API-Probe YAML Schema Specification
 
-**Version:** 2.0.0  
-**Last Updated:** 2025-01-26
+**Version:** 2.1.0  
 
 ## Overview
 
@@ -22,41 +21,25 @@ This document provides the complete YAML schema specification for api-probe conf
 - [Output Variables](#output-variables)
 - [Include Directive](#include-directive)
 - [Variable Substitution](#variable-substitution)
+- [Type Coercion Tags](#type-coercion-tags)
 - [Progress Reporting](#progress-reporting)
+- [Expression Evaluation](#expression-evaluation)
+- [Validation Conditional Ignore](#validation-conditional-ignore)
 - [Complete Examples](#complete-examples)
 
 ---
 
 ## Root Structure
 
-The root of every api-probe configuration file contains two optional top-level keys:
+The root of every api-probe configuration file contains two top-level keys:
 
 ```yaml
 executions:               # OPTIONAL: Array of execution contexts
   - name: string
     vars: []
-  # ...
-
-probes:                    # REQUIRED: Array of Probe or Group objects
-  - <probe-or-group>
-  - <probe-or-group>
-  # ...
-```
-
-### Schema
-
-```yaml
-executions:               # OPTIONAL: Define multiple execution contexts
-  - name: string          # OPTIONAL: Name for this execution (auto-generated if not provided)
-    vars:                 # REQUIRED: List of variable definitions
-      - VAR_NAME: value   # Variable name and value
 
 probes:                   # REQUIRED: Array of Probe or Group objects
-  - name: string          # Probe definition
-    # ...
-  - group:                # Group definition (parallel execution)
-      probes: []
-    # ...
+  - <probe-or-group>
 ```
 
 ### Rules
@@ -65,7 +48,7 @@ probes:                   # REQUIRED: Array of Probe or Group objects
 - If `executions` is absent or empty, probes run once with environment variables
 - `probes` array is required and must contain at least one probe or group
 - Probes execute in YAML sequence order (top to bottom)
-- Groups execute probes in parallel
+- Groups execute their probes in parallel
 - Empty `probes` array is valid (no-op)
 
 ---
@@ -90,58 +73,40 @@ executions:
 - **Type:** String
 - **Description:** Human-readable name for this execution context
 - **Auto-generation:** If not provided, generates like "awesome-paris", "elegant-tokyo"
-- **Example:** `"Production User A"`, `"Staging Environment"`
 - **Usage:** Shown in failure reports
 
 #### `vars` (required)
 - **Type:** List of key-value pairs
 - **Description:** Variables for this execution context
-- **Syntax:** `- VAR_NAME: "value"`
-- **Variable Resolution:**
+- **Variable Resolution Order:**
   1. Check vars in current execution
   2. If value contains `${...}`, resolve from environment
-  3. If not found, check environment variables
+  3. If not found in execution vars, check environment variables
   4. If still not found, error on use
 
 ### Examples
 
 ```yaml
 executions:
-  # Example 1: Hardcoded values
+  # Hardcoded values
   - name: "Production User A"
     vars:
       - ACCOUNT: "123456789"
       - CLIENT_ID: "client-prod-a"
       - REGION: "us-east-1"
-  
-  # Example 2: Mix of hardcoded and environment variables
+
+  # Mix of hardcoded and environment variables
   - name: "Staging"
     vars:
       - ACCOUNT: "999999999"
-      - API_KEY: "${STAGING_API_KEY}"    # From environment
+      - API_KEY: "${STAGING_API_KEY}"    # Resolved from environment
       - REGION: "us-west-2"
-  
-  # Example 3: Auto-generated name
-  - vars:                                # Name will be like "beautiful-london"
+
+  # Auto-generated name
+  - vars:
       - ACCOUNT: "555555555"
       - CLIENT_ID: "client-test"
 ```
-
-### Variable Resolution Order
-
-For any variable reference `${VAR}` in probes:
-
-1. **First:** Check `executions[current].vars` for `VAR`
-2. **Second:** If value is `${OTHER}`, resolve `OTHER` from environment
-3. **Third:** If `VAR` not in execution vars, check environment
-4. **Fourth:** If still not found, error when variable is used
-
-### Use Cases
-
-- **Multi-user probing:** Probe same flow with different user accounts
-- **Multi-region probing:** Probe same API in different regions
-- **Multi-environment:** Probe production and staging in one run
-- **A/B testing:** Test different configurations
 
 ---
 
@@ -152,270 +117,131 @@ A Probe represents a single API call with optional validation and output capture
 ### Schema
 
 ```yaml
-- name: string                           # REQUIRED: Unique probe name
-  type: rest | graphql                   # REQUIRED: API type
-  endpoint: string                       # REQUIRED: URL with ${VAR} support
-  
-  # REST-specific fields
-  method: GET | POST | PUT | DELETE | PATCH  # Optional, default: GET
-  headers:                               # Optional: HTTP headers
-    Header-Name: string                  # Value with ${VAR} support
-  body: object | array | string | !include path  # Optional: Request body
-  
-  # GraphQL-specific fields
-  query: string | !include path          # REQUIRED for GraphQL: Query/mutation
-  variables:                             # Optional: GraphQL variables
-    varName: any                         # Value with ${VAR} support
-  
-  # Common fields
-  delay: number                          # Optional: Seconds to wait before executing
-  timeout: number                        # Optional: Request timeout in seconds
-  retry:                                 # Optional: Retry configuration
-    max_attempts: number                 # Number of attempts (default: 1)
-    delay: number                        # Seconds between retries (default: 0)
-  debug: boolean                         # Optional: Print request/response to stderr
-  ignore: boolean | integer | string    # Optional: Skip probe if true/1/${VAR}=true
-  validation:                            # Optional: Response validation
+- name: string                                     # REQUIRED: Unique probe name
+  type: rest | graphql                             # REQUIRED: API type
+  endpoint: string                                 # REQUIRED: URL with ${VAR} support
+
+  # REST-specific
+  method: GET | POST | PUT | DELETE | PATCH        # Default: GET
+  headers:
+    Header-Name: string
+  body: object | array | string | !include path
+
+  # GraphQL-specific
+  query: string | !include path                    # REQUIRED for graphql
+  variables:
+    varName: any
+
+  # Common options
+  delay: number                                    # Seconds to wait before executing
+  timeout: number                                  # Request timeout in seconds (default: 30)
+  retry:
+    max_attempts: integer                          # Total attempts, >= 1
+    delay: number                                  # Seconds between retries (default: 0)
+  verify: boolean                                  # SSL certificate verification (default: true)
+  debug: boolean                                   # Print request/response to stderr (default: false)
+  ignore: boolean | integer | string               # Skip probe if true/1/${VAR}=true or expression
+
+  validation:                                      # Optional: Response validation
     <validation-spec>
-  output:                                # Optional: Variable capture
-    varName: path                        # Extract values to variables
+
+  output:                                          # Optional: Capture values to variables
+    VAR_NAME: path
 ```
 
 ### Field Descriptions
 
 #### `name` (required)
 - **Type:** String
-- **Description:** Human-readable probe name, must be unique across all probes
-- **Example:** `"OAuth Authentication"`, `"Get User Profile"`
+- **Description:** Human-readable probe name
+- **Note:** Duplicate names produce a validation warning. Output capture and reporting may behave unexpectedly with duplicates.
 
 #### `type` (required)
 - **Type:** String
 - **Values:** `"rest"` or `"graphql"`
-- **Description:** Type of API being probed
 
 #### `endpoint` (required)
 - **Type:** String with variable substitution
-- **Description:** Full URL including protocol
-- **Examples:**
-  - `"https://api.example.com/users"`
-  - `"https://api.example.com/${REGION}/data"`
-  - `"${BASE_URL}/auth"`
+- **Examples:** `"https://api.example.com/users"`, `"${BASE_URL}/auth"`
 
 #### `delay` (optional)
-- **Type:** Number (float)
-- **Description:** Number of seconds to wait before executing the probe
-- **Default:** None (no delay)
-- **Use Cases:**
-  - Rate limiting compliance
-  - Waiting for async operations
-  - Timing-dependent behavior testing
-- **Examples:**
-  - `delay: 2` - Wait 2 seconds
-  - `delay: 0.5` - Wait half a second
-  - `delay: 0` - No delay (ignored)
+- **Type:** Number (float), seconds
+- **Default:** None
+- **Use cases:** Rate limiting compliance, waiting for async operations
 
 #### `timeout` (optional)
-- **Type:** Number (float)
-- **Description:** Maximum time to wait for the request to complete, in seconds
-- **Default:** 30 seconds
-- **Use Cases:**
-  - Prevent hanging on slow APIs
-  - Enforce SLA requirements
-  - Fail fast on timeouts
-- **Examples:**
-  - `timeout: 5` - 5 second timeout
-  - `timeout: 30` - 30 second timeout
-  - `timeout: 0.5` - 500ms timeout
+- **Type:** Number (float), seconds
+- **Default:** 30
 
 #### `retry` (optional)
-- **Type:** Object with `max_attempts` and `delay` fields
-- **Description:** Automatically retry failed requests
-- **Default:** No retries (single attempt)
-- **Schema:**
-  ```yaml
-  retry:
-    max_attempts: 3    # Total attempts (1-10)
-    delay: 2           # Seconds to wait between retries
-  ```
-- **Use Cases:**
-  - Handle flaky networks
-  - Temporary service unavailability
-  - Rate limit backoff
-- **Behavior:**
-  - Retries on any request exception (timeout, connection error, etc.)
-  - Does NOT retry on validation failures
-  - Exponential backoff not supported (fixed delay)
+- **Type:** Object
+- **Fields:**
+  - `max_attempts` — integer >= 1, total number of attempts
+  - `delay` — non-negative number, seconds between retries (default: 0)
+- **Behavior:** Retries on request exceptions (timeout, connection error). Does NOT retry on validation failures.
+
+```yaml
+retry:
+  max_attempts: 3
+  delay: 2
+```
+
+#### `verify` (optional)
+- **Type:** Boolean
+- **Default:** `true`
+- **Description:** Whether to verify SSL/TLS certificates on the request.
+  Set to `false` for APIs using self-signed certificates or internal corporate CAs.
+- **Note:** When `false`, SSL warnings are suppressed for that probe only — other probes are not affected.
+
+```yaml
+verify: false    # Skip cert validation for this probe
+verify: true     # Explicit (same as default)
+                 # Omitting verify also defaults to true
+```
 
 #### `debug` (optional)
 - **Type:** Boolean
-- **Description:** Print full request and response details to stderr
 - **Default:** `false`
-- **Output includes:**
-  - Request method, URL, headers, body preview
-  - Response status, headers, body preview (first 500 chars)
-  - Retry attempts if applicable
-- **Use Cases:**
-  - Troubleshooting failing probes
-  - Inspecting actual request/response
-  - Debugging variable substitution
-- **Example:**
-  ```yaml
-  debug: true
-  ```
-- **Output (to stderr):**
-  ```
-  [DEBUG] Request attempt 1/1
-  [DEBUG]   Method: POST
-  [DEBUG]   URL: https://api.example.com/users
-  [DEBUG]   Headers: {'Content-Type': 'application/json'}
-  [DEBUG]   Body: {"name": "John", "email": "john@example.com"}
-  [DEBUG] Response:
-  [DEBUG]   Status: 201
-  [DEBUG]   Headers: {'content-type': 'application/json', ...}
-  [DEBUG]   Body: {"id": 12345, "name": "John", "email": "john@example.com"}
-  ```
+- **Output includes:** Request method, URL, headers, body preview (200 chars), response status, headers, body preview (500 chars), retry attempts
 
 #### `ignore` (optional)
-- **Type:** Boolean, Integer (0/1), String (variable substitution), or String (expression)
-- **Description:** Skip this probe without executing or reporting it
-- **Default:** Not ignored (probe runs)
-- **Values:**
-  - `true` or `1` - Always skip
-  - `false` or `0` - Always run  
-  - `"${VAR}"` - Dynamic based on variable (truthy values: "true", "1", "yes", "on")
-  - `"expression"` - Expression with functions and operators (e.g., `"len(OFFERS) <= 2"`)
-- **Expressions:** See [Expression Evaluation](#expression-evaluation) section
-- **Functions:** `len()`, `has()`, `empty()`
-- **Operators:** `==`, `!=`, `>`, `<`, `>=`, `<=`, `&&`, `||`, `!`
-- **Use Cases:**
-  - Temporarily disable tests during development
-  - Environment-specific test execution
-  - Feature flag based testing
-  - CI/CD conditional execution
-  - Conditional execution based on previous probe results
-- **Behavior:**
-  - Ignored probes do NOT execute (no HTTP request)
-  - Ignored probes do NOT appear in output or reports
-  - Ignored probes do NOT affect exit codes
-- **Examples:**
-  ```yaml
-  ignore: true                    # Always skip
-  ignore: false                   # Always run
-  ignore: "${SKIP_TEST}"          # Dynamic from variable
-  ignore: "len(OFFERS) <= 2"      # Expression
-  ignore: "!has(body.premium)"    # Expression with function
-  ```
+- **Type:** Boolean, Integer (0/1), String (`"${VAR}"` or expression)
+- **Default:** `false` (probe runs)
+- **Truthy values for string:** `"true"`, `"1"`, `"yes"`, `"on"`
+- **Behavior:** Ignored probes do not execute, do not appear in output, and do not affect exit codes
+- See [Expression Evaluation](#expression-evaluation) for expression syntax
 
 ---
 
 ## Group Definition
 
-Groups enable parallel execution of probes. All probes within a group run simultaneously using ThreadPoolExecutor.
+Groups enable parallel execution of probes using a thread pool.
 
 ### Schema
 
 ```yaml
 - group:
-    name: string              # Optional: Group name (auto-generated if not provided)
-    ignore: boolean | integer | string  # Optional: Skip entire group
-    probes:
-      - name: string
-        # ... probe definition
-      - name: string
-        # ... probe definition
+    name: string                        # Optional: auto-generated if not provided
+    ignore: boolean | integer | string  # Optional: skip entire group
+    probes:                             # REQUIRED
+      - <probe>
+      - <probe>
 ```
-
-### Schema
-
-```yaml
-- group:
-    name: string              # Optional: Group name
-    ignore: boolean | string  # Optional: Skip entire group
-    probes: []                # Required: List of probes
-```
-
-### Field Descriptions
-
-#### `name` (optional)
-- **Type:** String
-- **Description:** Human-readable name for this group
-- **Auto-generation:** If not provided, generates like "awesome-paris", "elegant-tokyo"
-- **Usage:** Shown in progress output and reports
-
-#### `ignore` (optional)
-- **Type:** Boolean, Integer (0/1), or String (for variable substitution)
-- **Description:** Skip entire group without executing any probes in it
-- **Default:** Not ignored (group runs)
-- **Behavior:** Same as probe-level ignore
-- **Note:** Individual probes can override with `ignore: false`
-
-#### `probes` (required)
-- **Type:** Array of Probe objects
-- **Description:** List of probes to execute in parallel
 
 ### Behavior
 
-- All probes in group execute **in parallel**
-- Results maintain original order
-- Next item (probe or group) waits for all group probes to complete
-- Use for probes that can run independently
-
-### Examples
-
-```yaml
-probes:
-  # Sequential probe
-  - name: "Setup"
-    endpoint: "https://api.example.com/setup"
-  
-  # Parallel group - all 3 run simultaneously
-  - group:
-      probes:
-        - name: "Get User A"
-          endpoint: "https://api.example.com/users/1"
-        - name: "Get User B"
-          endpoint: "https://api.example.com/users/2"
-        - name: "Get User C"
-          endpoint: "https://api.example.com/users/3"
-  
-  # Sequential probe after group
-  - name: "Cleanup"
-    endpoint: "https://api.example.com/cleanup"
-```
-
-### Performance
-
-If 3 probes each take 2 seconds:
-- **Sequential:** 6 seconds total
-- **Parallel (group):** ~2 seconds total ⚡
+- All probes in a group execute in parallel
+- Results maintain YAML declaration order
+- The next item (probe or group) waits for all group probes to complete
+- If 3 probes each take 2 seconds: sequential = 6s, parallel group = ~2s
 
 ---
 
 ## REST API Probes
 
-REST probes support all standard HTTP methods.
-
-### Schema
-
-```yaml
-- name: string
-  type: rest
-  endpoint: string
-  method: GET | POST | PUT | DELETE | PATCH    # Default: GET
-  headers:                                      # Optional
-    Content-Type: string
-    Authorization: string
-    # ... other headers
-  body: object | array | string | !include path  # Optional
-  validation:                                   # Optional
-    # ... validation spec
-  output:                                       # Optional
-    # ... output variables
-```
-
 ### Content-Type Requirement
 
-If `body` is present, `Content-Type` header is **required**:
+`Content-Type` header is **required** when `body` is present:
 
 ```yaml
 - name: "Create User"
@@ -423,36 +249,30 @@ If `body` is present, `Content-Type` header is **required**:
   endpoint: "https://api.example.com/users"
   method: POST
   headers:
-    Content-Type: "application/json"    # REQUIRED when body present
+    Content-Type: "application/json"
   body:
     name: "John Doe"
 ```
 
 ### Body Types
 
-**Inline Object:**
 ```yaml
+# Inline object
 body:
   name: "John"
   email: "john@example.com"
-```
 
-**Inline Array:**
-```yaml
+# Inline array
 body:
   - id: 1
   - id: 2
-```
 
-**String (for XML, plain text):**
-```yaml
+# String (XML, plain text)
 body: |
   <?xml version="1.0"?>
   <user><name>John</name></user>
-```
 
-**External File:**
-```yaml
+# External file
 body: !include ../includes/user-payload.json
 ```
 
@@ -460,120 +280,38 @@ body: !include ../includes/user-payload.json
 
 ## GraphQL API Probes
 
-GraphQL probes support queries, mutations, and variables.
-
 ### Schema
 
 ```yaml
 - name: string
   type: graphql
   endpoint: string
-  query: string | !include path    # REQUIRED: GraphQL query/mutation
-  variables:                        # Optional: Query variables
+  query: string | !include path    # REQUIRED
+  variables:
     varName: value
-  headers:                          # Optional
+  headers:
     Authorization: string
-  validation:                       # Optional
-    # ... validation spec
-  output:                           # Optional
-    # ... output variables
+  validation: ...
+  output: ...
 ```
 
-### Examples
+### GraphQL Variables and Types
 
-**Inline Query:**
-```yaml
-- name: "Get Repository"
-  type: graphql
-  endpoint: "https://api.github.com/graphql"
-  query: |
-    query GetRepo($owner: String!, $name: String!) {
-      repository(owner: $owner, name: $name) {
-        name
-        stargazerCount
-      }
-    }
-  variables:
-    owner: "torvalds"
-    name: "linux"
-```
+GraphQL `variables` are sent verbatim in the request payload. Use [Type Coercion Tags](#type-coercion-tags) to ensure variables are sent as the correct JSON type when the value comes from an environment variable (which is always a string):
 
-**Query from File:**
-```yaml
-- name: "Get Repository"
-  type: graphql
-  endpoint: "https://api.github.com/graphql"
-  query: !include ../includes/repo-query.graphql
-  variables:
-    owner: "${REPO_OWNER}"
-    name: "${REPO_NAME}"
-```
-
-### GraphQL Variables: Complex Objects and Arrays
-
-GraphQL `variables` support nested objects and arrays and are sent verbatim in the request payload. Variable substitution `${VAR}` works inside these structures, and single-token substitutions preserve type (e.g., numbers remain numbers).
-
-**Nested Object Example:**
 ```yaml
 variables:
-  input:
-    name: "John Doe"
-    address:
-      city: "San Francisco"
-      country: "USA"
+  limit: !int "${PAGE_SIZE}"        # Sent as JSON number
+  active: !bool "${IS_ACTIVE}"      # Sent as JSON boolean
+  threshold: !float "${MIN_SCORE}"  # Sent as JSON float
+  tag: "${TAG}"                     # Sent as JSON string (default)
 ```
-
-**Array Example:**
-```yaml
-variables:
-  filters:
-    category: "electronics"
-    tags:
-      - "portable"
-      - "featured"
-```
-
-**With Substitution:**
-```yaml
-executions:
-  - vars:
-      - CATEGORY: "books"
-      - LIMIT: "20"
-
-probes:
-  - type: graphql
-    variables:
-      query: "harry potter"
-      limit: "${LIMIT}"       # Becomes number 20
-      filters:
-        category: "${CATEGORY}"
-```
-
-See also: Variable Substitution section for where variables are allowed.
 
 ---
 
 ## XML/SOAP API Probes
 
-XML and SOAP APIs use REST type with XML content and XPath for validation.
-
-### Schema
-
-```yaml
-- name: string
-  type: rest
-  endpoint: string
-  method: POST                      # Usually POST for SOAP
-  headers:
-    Content-Type: "text/xml; charset=utf-8"
-    SOAPAction: string              # SOAP-specific header
-  body: string | !include path      # XML/SOAP envelope
-  validation:
-    body:
-      # XPath expressions for XML
-```
-
-### Example
+XML and SOAP APIs use `type: rest` with XML content and XPath for validation.
 
 ```yaml
 - name: "SOAP Request"
@@ -599,344 +337,208 @@ See [XML/SOAP Guide](XML_SOAP_GUIDE.md) for complete XPath documentation.
 
 ## Validation Specification
 
-Validates HTTP response status, headers, and body.
-
 ### Schema
 
 ```yaml
 validation:
-  status: integer | string              # Optional: Expected status code or pattern
-  response_time: integer                # Optional: Max response time in milliseconds
-  headers:                              # Optional: Header validations
+  status: integer | string              # Expected status code or pattern
+  response_time: integer                # Max response time in milliseconds
+  headers:
     <validator>: <spec>
-  body:                                 # Optional: Body validations
+  body:
     <validator>: <spec>
 ```
 
 ### Available Validators
 
-| Validator | Description | Works On | Example |
-|-----------|-------------|----------|---------|
-| `status` | Exact status code match | - | `status: 200` |
-| `present` | Fields must exist | Headers, Body | `present: ["id", "email"]` |
-| `absent` | Fields must NOT exist | Headers, Body | `absent: ["password"]` |
-| `equals` | Exact value match | Headers, Body | `equals: { id: "123" }` |
-| `matches` | Regex pattern match | Headers, Body | `matches: { email: "^.*@.*$" }` |
-| `type` | Type checking | Body | `type: { age: integer }` |
-| `contains` | Substring/element check | Headers, Body | `contains: { name: "John" }` |
-| `range` | Numeric bounds | Body | `range: { age: [0, 120] }` |
-| `length` | Array/string length | Body | `length: { items: [1, 100] }` |
+| Validator | Description | Works On |
+|-----------|-------------|----------|
+| `status` | Exact or pattern status code | — |
+| `response_time` | Max response time (ms) | — |
+| `present` | Fields must exist | Headers, Body |
+| `absent` | Fields must NOT exist | Headers, Body |
+| `equals` | Exact value match | Headers, Body |
+| `matches` | Regex pattern match | Headers, Body |
+| `type` | Type checking | Body |
+| `contains` | Substring / array element | Headers, Body |
+| `range` | Numeric bounds | Body |
+| `length` | Array or string length | Body |
 
 ### Status Validation
 
 ```yaml
-validation:
-  status: 200        # Exact match
-  # OR
-  status: "2xx"      # Any 2xx status (200-299)
-  status: "3xx"      # Any 3xx status (300-399)
-  status: "4xx"      # Any 4xx status (400-499)
-  status: "5xx"      # Any 5xx status (500-599)
+status: 200       # Exact match
+status: "2xx"     # Any 200–299
+status: "3xx"     # Any 300–399
+status: "4xx"     # Any 400–499
+status: "5xx"     # Any 500–599
 ```
-
-**Pattern matching (case-insensitive):**
-- `"2xx"` or `"2XX"` - Success responses (200-299)
-- `"3xx"` or `"3XX"` - Redirects (300-399)
-- `"4xx"` or `"4XX"` - Client errors (400-499)
-- `"5xx"` or `"5XX"` - Server errors (500-599)
-
-**Note:** Patterns must be strings (use quotes)
 
 ### Response Time Validation
 
 ```yaml
 validation:
-  response_time: 1000    # Max 1000 milliseconds (1 second)
+  response_time: 1000    # Must respond within 1000ms
 ```
 
-**Validates that the total request-response time does not exceed the specified limit.**
+The actual response time is always shown in the report output regardless of whether `response_time` is set in validation.
 
-- **Type:** Integer (milliseconds)
-- **Measured:** From request start to response complete
-- **Includes:** Network latency, server processing, data transfer
-- **Use Cases:**
-  - SLA enforcement (e.g., API must respond within 500ms)
-  - Performance regression detection
-  - Identifying slow endpoints
+### Body Path Notation
 
-**Examples:**
+- **JSON dot notation:** `user.email`, `items[0].id`
+- **JSONPath:** `$.data.plans`, `$[0].id`
+- **Root array:** `$` (entire array), `$[0]` (first element)
+- **XPath (XML):** `//user/email`
+
+### Body Validators
+
+**present / absent:**
 ```yaml
-validation:
-  response_time: 500     # Must respond within 500ms
-  response_time: 2000    # Must respond within 2 seconds
-  response_time: 100     # Must respond within 100ms (very strict)
+body:
+  present:
+    - "user.id"
+    - "user.email"
+  absent:
+    - "password"
+    - "secret_key"
 ```
 
-**Error Message:**
-```
-Response time 1250ms exceeds maximum 1000ms
-```
-
-**Combined with other validations:**
+**equals:**
 ```yaml
-validation:
-  status: "2xx"
-  response_time: 1000    # Fast AND successful
-  body:
-    present:
-      - "data"
+body:
+  equals:
+    user.id: "12345"
+    user.active: true
+    user.email: "${EXPECTED_EMAIL}"
 ```
 
-### Header Validation
-
-**Present:**
+**matches:**
 ```yaml
-validation:
-  headers:
-    present:
-      - "Content-Type"
-      - "Authorization"
+body:
+  matches:
+    user.email: "^[a-z]+@example\\.com$"
+    user.id: "^[0-9]+$"
 ```
 
-**Equals:**
+**type:**
 ```yaml
-validation:
-  headers:
-    equals:
-      Content-Type: "application/json"
-      X-Custom: "${EXPECTED_VALUE}"    # Variable substitution!
+body:
+  type:
+    user.name: string
+    user.age: integer
+    user.balance: number
+    user.active: boolean
+    user.tags: array
+    user.metadata: object
+    user.deleted_at: "null"    # Quote "null"
 ```
 
-**Contains:**
+**contains:**
 ```yaml
-validation:
-  headers:
-    contains:
-      Content-Type: "json"    # Substring match
+body:
+  contains:
+    user.tags: "premium"      # Array element or substring
+    user.bio: "developer"
 ```
 
-**Matches:**
+**range:**
 ```yaml
-validation:
-  headers:
-    matches:
-      Content-Length: "^[0-9]+$"    # Regex pattern
+body:
+  range:
+    user.age: [18, 100]       # Min and max (inclusive)
+    user.score: [0, null]     # Min only
+    user.balance: [null, 1000]  # Max only
 ```
 
-**Absent:**
+**length:**
 ```yaml
-validation:
-  headers:
-    absent:
-      - "X-Debug-Token"
-      - "X-Internal-IP"
+body:
+  length:
+    items: 5              # Exactly 5
+    results: [1, 100]     # Between 1–100
+    name: [0, 50]         # String length 0–50 chars
+    tags: [1, null]       # At least 1, no upper limit
 ```
 
-### Body Validation
+### Root-Level Array Responses
 
-**Path Notation:**
-- JSON: Dot notation or JSONPath (`user.email`, `items[0].id`, `items[*].id`)
-- XML: XPath (`//user/email`, `//item[1]/id`)
-
-**Present:**
-```yaml
-validation:
-  body:
-    present:
-      - "user.id"
-      - "user.email"
-      - "user.address.city"
-```
-
-**Absent:**
-```yaml
-validation:
-  body:
-    absent:
-      - "password"
-      - "secret_key"
-      - "api_token"
-```
-
-**Equals:**
-```yaml
-validation:
-  body:
-    equals:
-      user.id: "12345"
-      user.name: "John Doe"
-      user.active: true
-      user.email: "${EXPECTED_EMAIL}"    # Variable substitution!
-```
-
-**Matches:**
-```yaml
-validation:
-  body:
-    matches:
-      user.email: "^[a-z]+@example\\.com$"
-      user.id: "^[0-9]+$"
-      user.uuid: "^[0-9a-f-]+$"
-```
-
-**Type:**
-```yaml
-validation:
-  body:
-    type:
-      user.name: string
-      user.age: integer
-      user.balance: number
-      user.active: boolean
-      user.tags: array
-      user.metadata: object
-      user.deleted_at: "null"    # Note: Quote "null"
-```
-
-Valid types: `string`, `integer`, `number`, `boolean`, `array`, `object`, `"null"`
-
-**Contains:**
-```yaml
-validation:
-  body:
-    contains:
-      user.tags: "premium"        # Array element or substring
-      user.bio: "developer"       # Substring match
-```
-
-**Range:**
-```yaml
-validation:
-  body:
-    range:
-      user.age: [18, 100]         # Min and max (inclusive)
-      user.score: [0, null]       # Min only (no maximum)
-      user.balance: [null, 1000]  # Max only (no minimum)
-```
-
-**Length:**
-```yaml
-validation:
-  body:
-    length:
-      items: 5              # Exactly 5 items
-      results: [1, 100]     # Between 1-100 items
-      name: [0, 50]         # String length 0-50 chars
-      tags: [3, 10]         # Array with 3-10 elements
-```
-
-Validates array or string length. Supports exact length or range [min, max].
-
-#### Root-Level Arrays (`$`)
-
-When the response body itself is an array (not wrapped in an object), use `$` to reference the root:
+When the response body is an array (not wrapped in an object):
 
 ```yaml
-validation:
-  body:
-    # Root is an array
-    type:
-      "$": array
-
-    # Validate array length
-    length:
-      "$": [1, 100]
-
-    # Validate first element fields
-    present:
-      - "$[0].id"
-      - "$[0].name"
-
-    # Validate specific values
-    equals:
-      "$[0].id": 1
-      "$[1].name": "Item 2"
-```
-
-Path quick reference for root arrays:
-- `$` — entire root array
-- `$[0]` — first element
-- `$[0].id` — field of first element
-
-### Variable Substitution in Validation
-
-**All validation values** support variable substitution:
-
-```yaml
-executions:
-  - vars:
-      - USER_ID: "12345"
-      - REGION: "us-east"
-
-probes:
-  - validation:
-      body:
-        equals:
-          user_id: "${USER_ID}"           # Validates against "12345"
-          region: "${REGION}"              # Validates against "us-east"
-        matches:
-          email: "^${USER_ID}@.*"         # Pattern with variable
-        range:
-          age: [0, "${MAX_AGE}"]          # Range with variable
+body:
+  type:
+    "$": array
+  length:
+    "$": [1, 100]
+  present:
+    - "$[0].id"
+    - "$[0].name"
+  equals:
+    "$[0].id": 1
 ```
 
 ---
 
 ## Output Variables
 
-Capture values from responses to use in subsequent probes.
+Capture values from responses for use in subsequent probes.
 
 ### Schema
 
 ```yaml
 output:
-  VAR_NAME: "path"              # Capture from body
-  VAR_NAME: "body.path.to.field"
-  VAR_NAME: "header.Header-Name"
+  VAR_NAME: path
 ```
 
-### Path Prefixes
+### Path Convention
 
-- `body.` - Extract from response body (default if no prefix)
-- `header.` - Extract from response headers
+Output paths use the **same bare path convention as validators** — no prefix required for body fields:
 
-### Examples
+| Path | Extracts |
+|------|----------|
+| `data.token` | Body field `data.token` |
+| `$.data.items[0].id` | JSONPath into body |
+| `headers.X-Request-ID` | Response header |
+| `status` | HTTP status code (integer) |
 
-**Capture from Body:**
 ```yaml
+# Body fields — bare path, same as validators
 output:
-  USER_ID: "body.id"
-  ACCESS_TOKEN: "body.access_token"
-  REFRESH_TOKEN: "body.tokens.refresh"
+  TOKEN: "data.access_token"
+  USER_ID: "data.user.id"
+  FIRST_ITEM: "$.data.items[0].id"
+
+# Headers — prefix with headers.
+output:
+  REQUEST_ID: "headers.X-Request-ID"
+  RATE_LIMIT: "headers.X-RateLimit-Remaining"
+
+# Status code
+output:
+  LAST_STATUS: "status"
 ```
 
-**Capture from Headers:**
-```yaml
-output:
-  REQUEST_ID: "header.X-Request-ID"
-  RATE_LIMIT: "header.X-RateLimit-Remaining"
-```
+### Variable Scope
 
-**Use in Subsequent Probes:**
+- Variables persist within an execution context throughout the run
+- Each execution context has isolated variables
+- Variables captured in Probe 1 are available in Probe 2, 3, etc.
+- Variables do NOT leak between execution contexts
+
+### Use in Subsequent Probes
+
 ```yaml
 probes:
   - name: "Login"
     endpoint: "https://api.example.com/auth"
     output:
-      TOKEN: "body.access_token"
-  
+      TOKEN: "data.access_token"
+
   - name: "Get Profile"
     endpoint: "https://api.example.com/profile"
     headers:
-      Authorization: "Bearer ${TOKEN}"    # Use captured variable
+      Authorization: "Bearer ${TOKEN}"
 ```
-
-### Variable Scope
-
-- Variables persist within an execution context
-- Each execution context has isolated variables
-- Variables captured in Probe 1 are available in Probe 2, 3, etc.
-- Variables do NOT leak between execution contexts
 
 ---
 
@@ -947,89 +549,51 @@ Load content from external files using `!include`.
 ### Syntax
 
 ```yaml
-body: !include path/to/file.ext
-query: !include path/to/query.graphql
+field: !include path/to/file.ext
 ```
+
+Paths are resolved **relative to the config file location**.
 
 ### Supported File Types
 
-| Extension | Parse As | Use For |
-|-----------|----------|---------|
-| `.json` | JSON | Request bodies |
-| `.yaml`, `.yml` | YAML | Structured data |
+| Extension | Parsed As | Use For |
+|-----------|-----------|---------|
+| `.json` | JSON | Request bodies, GraphQL variables |
+| `.yaml`, `.yml` | YAML | Structured data, validation fragments |
 | `.graphql` | Plain text | GraphQL queries |
-| `.xml` | Plain text | XML/SOAP envelopes |
-| Others | Plain text | Any text content |
+| `.xml` | Plain text | SOAP envelopes |
+| Other | Plain text | Any text content |
 
-### Path Resolution
+### Where `!include` Works
 
-Paths are **relative to the config file location**:
+`!include` is processed at YAML load time, before variable substitution. It works anywhere in the config that expects the type of data the file contains:
 
-```
-project/
-├── tests/
-│   └── api-tests.yaml          # Config file here
-└── includes/
-    └── user.json                # Include file here
-
-# In api-tests.yaml:
-body: !include ../includes/user.json
+```yaml
+body: !include ../includes/payload.json           # ✅ REST body
+query: !include ../includes/query.graphql         # ✅ GraphQL query
+variables: !include ../includes/variables.json    # ✅ Entire variables object
+variables:
+  input: !include ../includes/item-input.json     # ✅ Nested in variables
 ```
 
 ### Variable Substitution in Included Files
 
-Variables **ARE substituted** in included files:
+`!include` runs first, then variable substitution runs at execution time. So `${VAR}` placeholders inside included files are substituted correctly:
 
-**File: includes/template.json**
 ```json
+// includes/auth-request.json
 {
-  "user_id": "${USER_ID}",
-  "account": "${ACCOUNT}"
+  "client_id": "${CLIENT_ID}",
+  "client_secret": "${CLIENT_SECRET}"
 }
 ```
 
-**Config:**
 ```yaml
-executions:
-  - vars:
-      - USER_ID: "12345"
-      - ACCOUNT: "acc-A"
-
-probes:
-  - body: !include ../includes/template.json
-    # Sends: {"user_id": "12345", "account": "acc-A"}
+# config.yaml — ${CLIENT_ID} will be substituted at runtime
+body: !include ../includes/auth-request.json
 ```
 
-### Examples
-
-**JSON Body:**
-```yaml
-- name: "Create User"
-  type: rest
-  endpoint: "https://api.example.com/users"
-  method: POST
-  headers:
-    Content-Type: "application/json"
-  body: !include ../includes/user-create.json
-```
-
-**GraphQL Query:**
-```yaml
-- name: "Get Repository"
-  type: graphql
-  endpoint: "https://api.github.com/graphql"
-  query: !include ../includes/repo-query.graphql
-```
-
-**SOAP Envelope:**
-```yaml
-- name: "SOAP Request"
-  type: rest
-  method: POST
-  headers:
-    Content-Type: "text/xml"
-  body: !include ../includes/soap-envelope.xml
-```
+**Note:** You cannot use `${VAR}` inside the path of an `!include` itself, because substitution has not run yet when the YAML loader processes the directive.
 
 See [Include Directive Guide](INCLUDE_DIRECTIVE.md) for complete documentation.
 
@@ -1037,88 +601,140 @@ See [Include Directive Guide](INCLUDE_DIRECTIVE.md) for complete documentation.
 
 ## Variable Substitution
 
-Variables are substituted using `${VAR_NAME}` syntax.
+Variables are substituted using `${VAR_NAME}` syntax at execution time.
+
+### Variable Sources (priority order)
+
+1. **Execution vars** (highest — from `executions[current].vars`)
+2. **Environment variables**
+3. **Output variables** (captured from previous probes in the same run)
+
+### Where Variables Work
+
+✅ **Supported:**
+- `endpoint`
+- `headers` (values)
+- `body` (all nested values)
+- `query`
+- `variables` (GraphQL variable values)
+- All validation values (`equals`, `matches`, `contains`, `range` bounds)
+
+❌ **Not supported:**
+- Validation field paths / keys (e.g. `${FIELD}: value` on the left side)
+- Probe `name`
+- `!include` file paths
+
+### Examples
+
+```yaml
+endpoint: "${BASE_URL}/users/${USER_ID}"
+
+headers:
+  Authorization: "Bearer ${TOKEN}"
+
+body:
+  user_id: "${USER_ID}"
+  region: "${REGION}"
+
+validation:
+  body:
+    equals:
+      user_id: "${USER_ID}"
+    matches:
+      email: "^${USER_ID}@.*"
+```
+
+---
+
+## Type Coercion Tags
+
+By default, environment variables and execution vars are strings. When a GraphQL operation or downstream API requires a specific JSON type (integer, boolean, float), use type coercion tags.
+
+### Supported Tags
+
+| Tag | Target Type | Fallback on failure |
+|-----|-------------|---------------------|
+| `!int` | Integer | String + `[WARN]` to stderr |
+| `!float` | Float | String + `[WARN]` to stderr |
+| `!bool` | Boolean | String + `[WARN]` to stderr |
+| `!str` | String | N/A (always succeeds) |
 
 ### Syntax
 
 ```yaml
-"${VAR_NAME}"           # Simple substitution
-"prefix-${VAR}-suffix"  # Within strings
+field: !int "${VAR}"       # Substitute then coerce to int
+field: !bool "${VAR}"      # Substitute then coerce to bool
+field: !float "${VAR}"     # Substitute then coerce to float
+field: !str "${VAR}"       # Explicit string (same as default)
 ```
 
-### Variable Sources
+### Boolean Coercion Rules
 
-1. **Execution vars** (highest priority)
-2. **Environment variables**
-3. **Output variables** (captured from previous probes)
+| Input value | Result |
+|-------------|--------|
+| `"true"`, `"1"`, `"yes"` | `true` |
+| `"false"`, `"0"`, `"no"` | `false` |
+| Anything else | String fallback + `[WARN]` |
 
-### Where Variables Work
+### Where Tags Apply
 
-✅ **Request fields:**
-- `endpoint`
-- `headers` (keys and values)
-- `body` (all nested values)
-- `query`
-- `variables`
+Tags are most useful on GraphQL `variables` where the schema enforces types:
 
-✅ **Validation values:**
-- `equals` values
-- `matches` patterns
-- `contains` values
-- `range` bounds
-- All validator values
-
-❌ **Where variables DON'T work:**
-- Validation paths/keys (e.g., can't use `${FIELD}: value`)
-- Probe names
-- Validator names
-
-### Examples
-
-**In Endpoint:**
 ```yaml
-endpoint: "${BASE_URL}/users/${USER_ID}"
+- name: "Search Products"
+  type: graphql
+  endpoint: "${API_URL}"
+  query: |
+    query($limit: Int!, $active: Boolean!, $threshold: Float!) {
+      products(limit: $limit, active: $active, minScore: $threshold) {
+        id name
+      }
+    }
+  variables:
+    limit: !int "${PAGE_SIZE}"         # Int! — must be integer
+    active: !bool "${SHOW_ACTIVE}"     # Boolean! — must be boolean
+    threshold: !float "${MIN_SCORE}"   # Float! — must be float
+    tag: "${TAG}"                      # String — default, no tag needed
 ```
 
-**In Headers:**
-```yaml
-headers:
-  Authorization: "Bearer ${TOKEN}"
-  X-Client-ID: "${CLIENT_ID}"
-```
+Tags also work on any other probe field that accepts a value:
 
-**In Body:**
 ```yaml
 body:
-  user_id: "${USER_ID}"
-  account: "${ACCOUNT}"
-  metadata:
-    region: "${REGION}"
+  count: !int "${ITEM_COUNT}"
+  ratio: !float "${RATIO}"
+  enabled: !bool "${FEATURE_FLAG}"
 ```
 
-**In Validation:**
-```yaml
-validation:
-  body:
-    equals:
-      user_id: "${USER_ID}"      # Variable in validation value
-      region: "${REGION}"
-    matches:
-      email: "^${USER_ID}@.*"    # Variable in regex pattern
+### Behavior When Coercion Fails
+
+Coercion is soft — it never causes a probe to fail:
+
+```
+# PAGE_SIZE="abc"
+[WARN] !int coercion failed for value 'abc' — keeping as string
+
+# SHOW_ACTIVE="maybe"
+[WARN] !bool coercion failed for value 'maybe' (expected true/false/yes/no/1/0) — keeping as string
 ```
 
-**In GraphQL Variables:**
+The variable is kept as a string and the request proceeds. The API may then reject the type, which will surface as a validation failure.
+
+### Literal Values
+
+Tags also work on literal (non-variable) values, though it is rarely needed since YAML already handles native types:
+
 ```yaml
-variables:
-  owner: "${REPO_OWNER}"
-  name: "${REPO_NAME}"
+# These are equivalent:
+limit: !int "10"
+limit: 10            # YAML native integer — preferred for literals
 ```
 
 ---
 
 ## Progress Reporting
 
-api-probe automatically prints execution progress to stderr, allowing you to monitor probe execution in real-time while keeping normal output (results, errors) separate.
+Execution progress is always printed to stderr. Actual response time is shown for every probe.
 
 ### Output Format
 
@@ -1126,314 +742,148 @@ api-probe automatically prints execution progress to stderr, allowing you to mon
 ▶ Executing: Production Context
 ============================================================
   → OAuth Authentication
+  Endpoint: https://api.example.com/auth
+  Response time: 243ms
     ✓ Passed
-  → Get User Profile
-    ✓ Passed  
-  → Update Settings
-    ✗ Failed (2 error(s))
-  → Delete Cache
-    ⊗ Skipped: Variable CACHE_ID not defined
 
-▶ Executing: Staging Context
-============================================================
-  → OAuth Authentication
-    ✓ Passed
   → Get User Profile
-    ✓ Passed
+  Endpoint: https://api.example.com/profile
+  Response time: 1821ms
+    ✗ Failed (1 error(s))
+
+  → Cleanup
+  Endpoint: https://api.example.com/cleanup
+  Response time: 88ms
+    ⊗ Skipped: Variable CACHE_ID not defined
 ```
 
 ### Progress Symbols
 
-- `▶` - Execution context starting
-- `→` - Probe starting
-- `✓` - Probe passed validation
-- `✗` - Probe failed validation
-- `⊗` - Probe skipped (missing variable, etc.)
+| Symbol | Meaning |
+|--------|---------|
+| `▶` | Execution context starting |
+| `→` | Probe starting |
+| `✓` | Probe passed |
+| `✗` | Probe failed |
+| `⊗` | Probe skipped |
 
-### With Debug Mode
+### Response Time
 
-When `debug: true` is set on a probe, detailed request/response information is printed:
+Actual response time is shown for every completed probe, regardless of whether `response_time` validation is configured. The `response_time` validation field sets a threshold that triggers a failure; the reported time is always shown for observability.
 
-```
-  → Debug This API
-[DEBUG] Request attempt 1/1
-[DEBUG]   Method: GET
-[DEBUG]   URL: https://api.example.com/data
-[DEBUG]   Headers: {'Authorization': 'Bearer abc123'}
-[DEBUG] Response:
-[DEBUG]   Status: 200
-[DEBUG]   Headers: {'content-type': 'application/json'}
-[DEBUG]   Body: {"id": 123, "name": "test"}...
-    ✓ Passed
-```
+### Capturing Output
 
-### Capturing Progress
-
-Since progress goes to stderr, you can:
+All progress goes to stderr:
 
 ```bash
-# See progress but not results
+# Progress only (suppress stdout)
 ./run.sh config.yaml 2>&1 >/dev/null
 
-# Save progress to log file
+# Save progress to log
 ./run.sh config.yaml 2>execution.log
 
 # See both (normal)
 ./run.sh config.yaml
 ```
 
-### Benefits
-
-- **Real-time feedback** - Know which probe is running
-- **CI/CD visibility** - Progress visible in pipeline logs  
-- **Debugging** - Combine with `debug: true` for full details
-- **Separate concerns** - Progress (stderr) vs results (stdout)
-
 ---
 
 ## Expression Evaluation
 
-api-probe supports expression evaluation in `output` and `ignore` fields, enabling conditional logic and computed values.
+Expressions are supported in `output` and `ignore` fields.
 
 ### Supported Functions
 
-| Function | Description | Example | Returns |
-|----------|-------------|---------|----------|
-| `len(VAR)` | Get length of array/string/dict | `len(body.offers)` | Integer |
-| `has(VAR)` | Check if exists and not empty | `has(body.data)` | Boolean |
-| `empty(VAR)` | Check if empty or None | `empty(body.errors)` | Boolean |
+| Function | Returns | Example |
+|----------|---------|---------|
+| `len(VAR)` | Integer | `len(body.offers)` |
+| `has(VAR)` | Boolean | `has(body.data)` |
+| `empty(VAR)` | Boolean | `empty(body.errors)` |
 
 ### Supported Operators
 
-- **Comparison:** `==`, `!=`, `>`, `<`, `>=`, `<=`
-- **Logical:** `&&` (AND), `||` (OR), `!` (NOT)
+`==`, `!=`, `>`, `<`, `>=`, `<=`, `&&`, `||`, `!`
 
-### In `output` - Capture Computed Values
+### Path Syntax in Expressions
+
+Expressions (used in `len()`, `has()`, `empty()`, and comparisons) use a **`body.` prefix** to reference response body fields. This is distinct from output capture paths which use bare paths:
+
+| Context | Syntax | Example |
+|---------|--------|---------|
+| Output capture path | Bare path | `"data.offers"` |
+| Expression referencing body | `body.` prefix | `"len(body.offers)"` |
+| Expression referencing captured variable | Variable name | `"OFFER_COUNT <= 2"` |
+
+### In `output`
 
 ```yaml
 output:
-  # Standard path extraction
-  OFFERS: "body.offers"
-  
-  # Expression: capture count
-  OFFER_COUNT: "len(body.offers)"
-  
-  # Expression: capture boolean
-  HAS_CONTENT: "has(body.offers[0].content)"
-  
-  # Expression: combined logic
-  IS_VALID: "len(body.offers) > 2 && has(body.offers[0].content)"
+  OFFERS: "data.offers"                              # Bare path — output capture
+  OFFER_COUNT: "len(body.offers)"                    # Expression — body. prefix required
+  HAS_CONTENT: "has(body.offers[0].content)"         # Expression — body. prefix required
+  IS_VALID: "len(body.offers) > 2 && has(body.offers[0].content)"  # Expression
 ```
 
-### In `ignore` - Conditional Execution
+### In `ignore`
 
 ```yaml
-probes:
-  - name: "Get Offers"
-    output:
-      OFFER_COUNT: "len(body.offers)"
-  
-  - name: "Process Rich Offers"
-    endpoint: "https://api.example.com/process"
-    ignore: "OFFER_COUNT <= 2"  # Skip if not enough offers
-  
-  - name: "Fallback Processing"
-    endpoint: "https://api.example.com/fallback"
-    ignore: "OFFER_COUNT > 2"   # Only run if few offers
-```
-
-### In Validation - Conditional Validation
-
-```yaml
-validation:
-  status: "2xx"
-  
-  headers:
-    ignore: "status != 200"  # Skip header validation if not 200
-    present:
-      - "X-Auth-Token"
-  
-  body:
-    ignore: "empty(body.data)"  # Skip body validation if empty
-    present:
-      - "data.id"
-      - "data.name"
-```
-
-### Expression Examples
-
-**Length checks:**
-```yaml
-ignore: "len(body.offers) <= 2"
-ignore: "len(ITEMS) == 0"
-OFFER_COUNT: "len(body.offers)"
-```
-
-**Existence checks:**
-```yaml
-ignore: "!has(body.premium)"
-ignore: "has(body.errors)"
-HAS_DATA: "has(body.data)"
-```
-
-**Combined logic:**
-```yaml
-ignore: "len(body.offers) > 2 && has(body.offers[0].content)"
-ignore: "status >= 400 || empty(body.data)"
-ignore: "!has(body.premium) || body.premium != true"
-```
-
-**Access to response:**
-```yaml
-# In output - can reference body.* directly
-OFFER_COUNT: "len(body.offers)"
-FIRST_ID: "body.offers[0].id"
-
-# In ignore - can use captured variables or response data
-ignore: "len(OFFERS) <= 2"          # Using captured variable
-ignore: "len(body.offers) <= 2"     # Direct response access
-ignore: "status != 200"              # Status code
-
-# In validation ignore - can use response data
-validation:
-  body:
-    ignore: "len(body.offers) == 0"  # Direct access in validation
-    present: ["offers[0].id"]
+ignore: "OFFER_COUNT <= 2"                           # References captured variable
+ignore: "!has(body.premium)"                         # References body directly
+ignore: "len(body.offers) > 2 && has(body.offers[0].content)"  # Body expression
 ```
 
 ### Error Handling
 
-- Parse errors logged to stderr: `[WARN] Failed to evaluate expression ...`
-- On error in `output`: Variable set to `None`
-- On error in `ignore`: Returns `false` (probe/validation runs)
-- On error in validation `ignore`: Returns `false` (validation runs)
+| Location | On error |
+|----------|----------|
+| `output` | Variable set to `None`, `[WARN]` to stderr |
+| `ignore` | Returns `false` (probe runs), `[WARN]` to stderr |
+| Validation `ignore` | Returns `false` (validation runs), `[WARN]` to stderr |
 
 ---
 
 ## Validation Conditional Ignore
 
-Validation sections (`headers` and `body`) support the `ignore` field to conditionally skip validation based on the response.
+`headers` and `body` validation blocks support an `ignore` field to skip validation conditionally.
 
 ### Schema
 
 ```yaml
 validation:
-  status: integer | string
-  
   headers:
-    ignore: string           # Expression to skip header validation
-    present: [...]           # Only runs if not ignored
+    ignore: string      # Expression — skip all header validation if true
+    present: [...]
     equals: {...}
-  
   body:
-    ignore: string           # Expression to skip body validation
-    present: [...]           # Only runs if not ignored
-    equals: {...}
+    ignore: string      # Expression — skip all body validation if true
+    present: [...]
     type: {...}
 ```
 
-### Use Cases
+### Examples
 
-**Skip validation for error responses:**
 ```yaml
 validation:
   status: "2xx"
-  
-  body:
-    ignore: "status >= 400"  # Don't validate body for errors
-    present:
-      - "data.id"
-      - "data.name"
-```
 
-**Skip validation for empty data:**
-```yaml
-validation:
-  body:
-    ignore: "empty(body.data)"  # Skip if no data
-    length:
-      data: [1, 100]
-    present:
-      - "data[0].id"
-```
-
-**Conditional validation based on response type:**
-```yaml
-validation:
-  body:
-    ignore: "body.type != 'detailed'"  # Only validate detailed responses
-    present:
-      - "data.metadata"
-      - "data.relations"
-      - "data.details"
-```
-
-**Skip header validation selectively:**
-```yaml
-validation:
   headers:
-    ignore: "status != 200"  # Only validate headers on success
+    ignore: "status != 200"     # Skip header checks unless status is 200
     present:
       - "X-Request-ID"
-      - "X-Auth-Token"
-  
+
   body:
+    ignore: "empty(body.data)"  # Skip body checks if data is empty
     present:
-      - "id"  # Always validate body
-```
-
-**Premium features validation:**
-```yaml
-validation:
-  body:
-    ignore: "!has(body.premium) || body.premium != true"
-    present:
-      - "premium.tier"
-      - "premium.features"
-```
-
-### Complete Example
-
-```yaml
-probes:
-  - name: "Get User Data"
-    endpoint: "https://api.example.com/user"
-    validation:
-      status: 200
-      
-      headers:
-        # Skip header checks if not successful
-        ignore: "status != 200"
-        present:
-          - "X-User-Type"
-          - "X-Session-ID"
-      
-      body:
-        # Always validate basic fields
-        present:
-          - "id"
-          - "email"
-  
-  - name: "Get Premium Features"
-    endpoint: "https://api.example.com/features"
-    validation:
-      status: 200
-      
-      body:
-        # Only validate if user is premium
-        ignore: "body.user.premium != true"
-        present:
-          - "premium.tier"
-          - "premium.benefits"
-        length:
-          "premium.benefits": [1, 50]
+      - "data.id"
+    length:
+      data: [1, 100]
 ```
 
 ---
 
 ## Complete Examples
 
-### Example 1: Multi-Context with Validation
+### Example 1: Multi-Context with SSL Skip
 
 ```yaml
 executions:
@@ -1441,145 +891,143 @@ executions:
     vars:
       - ACCOUNT: "123456"
       - API_KEY: "${PROD_API_KEY}"
-      - REGION: "us-east-1"
-  
-  - name: "Staging"
+
+  - name: "Internal Staging"
     vars:
       - ACCOUNT: "999999"
       - API_KEY: "${STAGING_API_KEY}"
-      - REGION: "us-west-2"
 
 probes:
   - name: "Get Account Info"
     type: rest
-    endpoint: "https://api.example.com/accounts/${ACCOUNT}"
+    endpoint: "https://internal-staging.corp.com/accounts/${ACCOUNT}"
+    verify: false                  # Self-signed cert on internal staging
     headers:
       X-API-Key: "${API_KEY}"
-      X-Region: "${REGION}"
     validation:
       status: 200
+      response_time: 500
       body:
         equals:
-          account_id: "${ACCOUNT}"       # Variable substitution
-          region: "${REGION}"
+          account_id: "${ACCOUNT}"
         type:
-          account_id: string
           balance: number
 ```
 
-### Example 2: Parallel Groups with Include
-
-```yaml
-probes:
-  - name: "Login"
-    type: rest
-    endpoint: "${BASE_URL}/auth"
-    method: POST
-    headers:
-      Content-Type: "application/json"
-    body: !include ../includes/login.json
-    output:
-      TOKEN: "body.access_token"
-  
-  # Parallel group - all run simultaneously
-  - group:
-      probes:
-        - name: "Get User Profile"
-          type: rest
-          endpoint: "${BASE_URL}/profile"
-          headers:
-            Authorization: "Bearer ${TOKEN}"
-        
-        - name: "Get User Settings"
-          type: rest
-          endpoint: "${BASE_URL}/settings"
-          headers:
-            Authorization: "Bearer ${TOKEN}"
-        
-        - name: "Get User Notifications"
-          type: rest
-          endpoint: "${BASE_URL}/notifications"
-          headers:
-            Authorization: "Bearer ${TOKEN}"
-```
-
-### Example 3: GraphQL with Variables
-
-```yaml
-probes:
-  - name: "Search Repositories"
-    type: graphql
-    endpoint: "https://api.github.com/graphql"
-    headers:
-      Authorization: "Bearer ${GITHUB_TOKEN}"
-    query: |
-      query SearchRepos($query: String!) {
-        search(query: $query, type: REPOSITORY, first: 5) {
-          nodes {
-            ... on Repository {
-              name
-              stargazerCount
-            }
-          }
-        }
-      }
-    variables:
-      query: "language:${LANGUAGE} stars:>1000"
-    validation:
-      status: 200
-      body:
-        present:
-          - "data.search.nodes"
-        type:
-          data.search.nodes: array
-        absent:
-          - "errors"
-```
-
-### Example 4: Advanced Features (Timeout, Retry, Debug)
+### Example 2: GraphQL with Typed Variables
 
 ```yaml
 executions:
   - name: "Production"
     vars:
-      - BASE_URL: "https://api.prod.example.com"
-      - API_KEY: "${PROD_API_KEY}"
+      - PAGE_SIZE: "20"
+      - SHOW_ACTIVE: "true"
+      - MIN_SCORE: "0.75"
 
 probes:
-  - name: "Health Check with Retry"
+  - name: "Search Products"
+    type: graphql
+    endpoint: "${API_URL}/graphql"
+    headers:
+      Authorization: "Bearer ${TOKEN}"
+    query: |
+      query($limit: Int!, $active: Boolean!, $threshold: Float!) {
+        products(limit: $limit, active: $active, minScore: $threshold) {
+          id
+          name
+          score
+        }
+      }
+    variables:
+      limit: !int "${PAGE_SIZE}"
+      active: !bool "${SHOW_ACTIVE}"
+      threshold: !float "${MIN_SCORE}"
+    validation:
+      status: 200
+      body:
+        present:
+          - "data.products"
+        type:
+          data.products: array
+        length:
+          data.products: [1, null]
+        absent:
+          - "errors"
+```
+
+### Example 3: Auth Flow with Output Capture
+
+```yaml
+probes:
+  - name: "Login"
+    type: rest
+    endpoint: "${BASE_URL}/auth/token"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body:
+      client_id: "${CLIENT_ID}"
+      client_secret: "${CLIENT_SECRET}"
+    output:
+      TOKEN: "data.access_token"
+      EXPIRES_IN: "data.expires_in"
+      REQUEST_ID: "headers.X-Request-ID"
+    validation:
+      status: 200
+      body:
+        present:
+          - "data.access_token"
+        type:
+          data.access_token: string
+
+  - group:
+      probes:
+        - name: "Get Profile"
+          type: rest
+          endpoint: "${BASE_URL}/profile"
+          headers:
+            Authorization: "Bearer ${TOKEN}"
+          validation:
+            status: 200
+
+        - name: "Get Settings"
+          type: rest
+          endpoint: "${BASE_URL}/settings"
+          headers:
+            Authorization: "Bearer ${TOKEN}"
+          validation:
+            status: 200
+```
+
+### Example 4: Retry, Timeout, and Debug
+
+```yaml
+probes:
+  - name: "Health Check"
     type: rest
     endpoint: "${BASE_URL}/health"
-    timeout: 5              # 5 second timeout
+    timeout: 5
     retry:
-      max_attempts: 3       # Retry up to 3 times
-      delay: 2              # Wait 2 seconds between retries
+      max_attempts: 3
+      delay: 2
     validation:
-      status: "2xx"         # Accept any 2xx status
-  
-  - name: "Get Data (Debug Mode)"
+      status: "2xx"
+      response_time: 3000
+
+  - name: "Slow Internal API"
     type: rest
-    endpoint: "${BASE_URL}/data"
-    timeout: 10
-    debug: true             # Print full request/response
+    endpoint: "https://internal.corp.com/data"
+    verify: false
+    timeout: 30
+    debug: true
+    retry:
+      max_attempts: 2
+      delay: 5
     validation:
       status: 200
-      response_time: 500    # Must respond within 500ms
       body:
-        length:
-          "$": [1, 100]     # Root array with 1-100 items
         type:
           "$": array
-        present:
-          - "$[0].id"
-  
-  - name: "Rate Limited API"
-    type: rest
-    endpoint: "${BASE_URL}/limited"
-    delay: 1                # Wait 1 second before request
-    timeout: 15
-    retry:
-      max_attempts: 5
-      delay: 3
-    validation:
-      status: 200
+        length:
+          "$": [1, null]
 ```

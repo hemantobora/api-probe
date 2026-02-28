@@ -15,6 +15,7 @@ class ProbeResult:
     skipped: bool = False
     skip_reason: str = ""
     endpoint: Optional[str] = None  # Parsed endpoint (after variable substitution)
+    response_time_ms: Optional[int] = None  # Actual response time in milliseconds
 
 
 @dataclass

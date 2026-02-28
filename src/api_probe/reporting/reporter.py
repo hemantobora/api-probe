@@ -55,6 +55,8 @@ class Reporter:
 
         if probe_result.endpoint:
             print(f"  Endpoint: {probe_result.endpoint}", file=sys.stderr)
+        if probe_result.response_time_ms is not None:
+            print(f"  Response time: {probe_result.response_time_ms}ms", file=sys.stderr)
 
         if probe_result.skipped:
             print(f"  ⊗ Skipped: {probe_result.skip_reason}", file=sys.stderr)
@@ -100,10 +102,11 @@ class Reporter:
 
         if probe_result.endpoint:
             print(f"  Endpoint: {probe_result.endpoint}", file=sys.stderr)
+        if probe_result.response_time_ms is not None:
+            print(f"  Response time: {probe_result.response_time_ms}ms", file=sys.stderr)
 
         if probe_result.skipped:
-            print(f"  ✗ Probe skipped", file=sys.stderr)
-            print(f"    Reason: {probe_result.skip_reason}", file=sys.stderr)
+            print(f"  ⊗ Skipped: {probe_result.skip_reason}", file=sys.stderr)
         else:
             for error in probe_result.errors:
                 print(f"  ✗ {error.message}", file=sys.stderr)

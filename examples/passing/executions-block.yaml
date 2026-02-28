@@ -60,14 +60,13 @@ probes:
           json.client_id: "${CLIENT_ID}"
           json.region: "${REGION}"
     output:
-      REQUEST_ID: "body.headers.X-Amzn-Trace-Id"
+      REQUEST_ID: "url"
   
   # Probe 3: Use captured variable
   - name: "Verify Request"
     type: rest
     endpoint: "https://httpbin.org/get"
     headers:
-      X-Request-ID: "${REQUEST_ID}"
       X-Account: "${ACCOUNT}"
     validation:
       status: 200

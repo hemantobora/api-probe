@@ -74,7 +74,7 @@ probes:
         matches:
           url: '^https://httpbin\.org/.+'
     output:
-      PROFILE_EMAIL: "body.json.email"
+      PROFILE_EMAIL: "json.email"
 
   # Probe 4: Echo headers; validate header round-trip
   - name: "Echo Headers (Client ID)"
@@ -110,7 +110,7 @@ probes:
         type:
           json.value: integer
     output:
-      REGION_OUT: "body.json.region"
+      REGION_OUT: "json.region"
 
   # Probe 6: Compute and store expression-based output
   - name: "Compute Slide Count"

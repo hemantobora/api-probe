@@ -240,8 +240,8 @@ Extract XML values to variables:
 
 ```yaml
 output:
-  USER_ID: "body.//user/id"
-  USER_NAME: "body.//user/name"
+  USER_ID: "//user/id"
+  USER_NAME: "//user/name"
 ```
 
 Then use in subsequent probes:

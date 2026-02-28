@@ -56,7 +56,7 @@ probes:
           json.age: integer
           json.active: boolean
     output:
-      POSTED_NAME: "body.json.name"
+      POSTED_NAME: "json.name"
   
   # Probe 4: Matches validator (regex)
   - name: "UUID Response"

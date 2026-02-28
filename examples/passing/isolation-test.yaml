@@ -31,7 +31,7 @@ probes:
         equals:
           json.client_id: "${CLIENT_ID}"
     output:
-      MY_TOKEN: "body.json.request_id"
+      MY_TOKEN: "json.request_id"
   
   # Probe 2: Use the captured variable - should be context-specific
   - name: "Use Context Token"

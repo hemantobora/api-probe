@@ -58,7 +58,7 @@ probes:
           json.clientId: "${CLIENT_ID}"
           json.region: "${REGION}"
     output:
-      REQUEST_ID: "body.headers.X-Amzn-Trace-Id"
+      REQUEST_ID: "url"
   
   # Probe 3: Chained probe using captured output
   - name: "Verify Request ID Captured"

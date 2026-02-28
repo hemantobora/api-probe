@@ -15,7 +15,7 @@ def test_load_simple_yaml(tmp_path: Path):
 
 
 def test_include_json(tmp_path: Path):
-    json_path = tmp_path / "body.json"
+    json_path = tmp_path / "json"
     json_path.write_text('{"key": "value"}')
 
     cfg_path = tmp_path / "config.yaml"

@@ -54,6 +54,7 @@ probes:                       # REQUIRED: List of probes and groups
   retry:                          # Optional: Retry on failure
     max_attempts: 3
     delay: 2
+  verify: true                    # Optional: SSL certificate verification (default: true, set false for self-signed certs)
   debug: false                    # Optional: Print full request/response to stderr
   ignore: false                   # Optional: Skip this probe (supports expressions)
   validation:                     # Optional: Response validation
@@ -87,9 +88,10 @@ probes:                       # REQUIRED: List of probes and groups
         field: 5                  # Exact length
         field: [min, max]         # Length range
   output:                         # Optional: Capture response values for later use
-    VAR_NAME: "body.path.to.field"
-    VAR_NAME: "header.Header-Name"
-    VAR_NAME: "len(body.items)"   # Expression functions: len(), has(), empty()
+    VAR_NAME: "path.to.field"        # Bare path for body fields
+    VAR_NAME: "headers.Header-Name"  # headers. prefix for response headers
+    VAR_NAME: "status"               # HTTP status code
+    VAR_NAME: "len(body.items)"      # Expression — body. prefix required inside expressions
 ```
 
 ### Probe Definition (GraphQL)
@@ -121,7 +123,7 @@ probes:                       # REQUIRED: List of probes and groups
       type:
         data.user: object
   output:
-    USER_NAME: "body.data.user.name"
+    USER_NAME: "data.user.name"
 ```
 
 ### Parallel Groups
@@ -317,7 +319,7 @@ probes:
         absent:
           - "errors"
     output:
-      FETCHED_USER_NAME: "body.data.user.name"
+      FETCHED_USER_NAME: "data.user.name"
 
   # Query: users(limit: Int, offset: Int) -> [User!]!
   # Validates list response with non-null array and non-null elements
