@@ -34,18 +34,10 @@ class MatchesValidator(Validator):
             try:
                 actual = self.extractor.extract(response, path)
                 
-                # Only works on strings
+                # Coerce non-strings to their string representation for matching
                 if not isinstance(actual, str):
-                    errors.append(ValidationError(
-                        test_name=test_name,
-                        validator="matches",
-                        field=path,
-                        expected=f"string matching /{pattern}/",
-                        actual=f"<non-string: {type(actual).__name__}>",
-                        message=f"Field '{path}' is not a string, cannot match pattern"
-                    ))
-                    continue
-                
+                    actual = str(actual)
+
                 # Check if matches
                 if not re.search(pattern, actual):
                     errors.append(ValidationError(

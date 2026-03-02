@@ -87,11 +87,7 @@ class ConfigValidator:
                 self.errors.append(f"Execution {i+1}: must be an object")
                 continue
             
-            if 'vars' not in execution:
-                self.errors.append(f"Execution {i+1}: missing required 'vars' field")
-                continue
-            
-            if not isinstance(execution['vars'], list):
+            if 'vars' in execution and not isinstance(execution['vars'], list):
                 self.errors.append(f"Execution {i+1}: 'vars' must be an array")
     
     def _validate_probes(self, probes: List[Any]) -> None:

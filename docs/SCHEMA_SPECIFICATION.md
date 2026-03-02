@@ -1,6 +1,6 @@
 # API-Probe YAML Schema Specification
 
-**Version:** 2.1.0  
+**Version:** 2.3.0  
 
 ## Overview
 
@@ -12,6 +12,7 @@ This document provides the complete YAML schema specification for api-probe conf
 
 - [Root Structure](#root-structure)
 - [Executions Block](#executions-block)
+- [Per-Execution Validation Overrides](#per-execution-validation-overrides)
 - [Probe Definition](#probe-definition)
 - [Group Definition](#group-definition)
 - [REST API Probes](#rest-api-probes)
@@ -62,9 +63,13 @@ Define multiple execution contexts to run the same probes with different variabl
 ```yaml
 executions:
   - name: string                    # OPTIONAL: Execution name (auto-generated if not provided)
-    vars:                           # REQUIRED: List of variable definitions
+    vars:                           # OPTIONAL: List of variable definitions (default: [])
       - VAR_NAME: "value"           # Hardcoded value
       - VAR_NAME: "${ENV_VAR}"      # Reference environment variable
+    # vars defaults to [] if omitted
+    validations:                    # OPTIONAL: Per-execution validation overrides keyed by probe name
+      "Probe Name":
+        <validation-spec>
 ```
 
 ### Field Descriptions
@@ -75,8 +80,9 @@ executions:
 - **Auto-generation:** If not provided, generates like "awesome-paris", "elegant-tokyo"
 - **Usage:** Shown in failure reports
 
-#### `vars` (required)
+#### `vars` (optional)
 - **Type:** List of key-value pairs
+- **Default:** Empty list
 - **Description:** Variables for this execution context
 - **Variable Resolution Order:**
   1. Check vars in current execution
@@ -106,6 +112,174 @@ executions:
   - vars:
       - ACCOUNT: "555555555"
       - CLIENT_ID: "client-test"
+```
+
+---
+
+## Per-Execution Validation Overrides
+
+Each execution context can supply a `validations` block that overrides or replaces the inline `validation:` defined on individual probes. This allows the same probe definitions to be validated differently per environment — for example, stricter assertions in production than in staging.
+
+### Schema
+
+```yaml
+executions:
+  - name: string
+    vars: [...]
+    validations:                        # OPTIONAL
+      "Exact Probe Name":               # Key must match probe name exactly
+        status: integer | string
+        response_time: integer
+        headers:
+          <validator>: <spec>
+        body:
+          <validator>: <spec>
+```
+
+### How It Works
+
+When a probe runs, its validation is resolved in this order:
+
+1. If `validations` in the current execution has a key matching the probe name → that spec is used
+2. Otherwise, the probe's own inline `validation:` block is used
+3. If neither is present → no validation is run for that probe
+
+Variable substitution (`${VAR}`) is applied to override specs at runtime, exactly as it is for inline validation.
+
+### Key Rules
+
+- Keys in `validations` must match probe names **exactly** (case-sensitive)
+- Probes without a matching key are unaffected
+- The override is **total replacement**, not a merge — if you override a probe, specify everything you want validated
+- Works with `!include` — the entire `validations` dict can be loaded from an external file
+
+### Inline File per Execution
+
+The most powerful use is loading a separate validation file per execution context:
+
+```yaml
+executions:
+  - name: "Production"
+    vars:
+      - BASE_URL: "https://api.prod.example.com"
+    validations: !include validations/prod.yaml
+
+  - name: "Staging"
+    vars:
+      - BASE_URL: "https://api.staging.example.com"
+    validations: !include validations/staging.yaml
+
+probes:
+  - name: "Get User"
+    type: rest
+    endpoint: "${BASE_URL}/user"
+    # no inline validation — comes entirely from execution validations block
+
+  - name: "List Orders"
+    type: rest
+    endpoint: "${BASE_URL}/orders"
+    # no inline validation
+```
+
+```yaml
+# validations/prod.yaml — strict
+"Get User":
+  status: 200
+  response_time: 300
+  body:
+    present:
+      - "data.id"
+      - "data.email"
+    type:
+      data.id: string
+      data.email: string
+    absent:
+      - "debug"
+      - "internal_flags"
+
+"List Orders":
+  status: 200
+  response_time: 500
+  body:
+    type:
+      "$": array
+    length:
+      "$": [1, null]
+```
+
+```yaml
+# validations/staging.yaml — relaxed
+"Get User":
+  status: 200
+  body:
+    present:
+      - "data.id"
+
+"List Orders":
+  status: "2xx"
+```
+
+### Inline Overrides with Variable Substitution
+
+Variables from `vars` are available inside the `validations` block:
+
+```yaml
+executions:
+  - name: "User A"
+    vars:
+      - ACCOUNT_ID: "123"
+      - EXPECTED_REGION: "us-east-1"
+    validations:
+      "Get Account":
+        status: 200
+        body:
+          equals:
+            account.id: "${ACCOUNT_ID}"       # substituted at runtime
+            account.region: "${EXPECTED_REGION}"
+
+  - name: "User B"
+    vars:
+      - ACCOUNT_ID: "456"
+      - EXPECTED_REGION: "eu-west-1"
+    validations:
+      "Get Account":
+        status: 200
+        body:
+          equals:
+            account.id: "${ACCOUNT_ID}"       # different value per execution
+            account.region: "${EXPECTED_REGION}"
+
+probes:
+  - name: "Get Account"
+    type: rest
+    endpoint: "${BASE_URL}/accounts/${ACCOUNT_ID}"
+```
+
+### Mixing Inline and Override
+
+A probe can have both an inline `validation:` and appear in `validations:`. The override always wins for that execution; other executions without an override use the inline block:
+
+```yaml
+executions:
+  - name: "Production"     # uses validations override below
+    vars:
+      - ENV: "prod"
+    validations:
+      "Health Check":
+        status: 200
+        response_time: 200   # strict in prod
+
+  - name: "Staging"        # no validations key — uses inline validation
+    vars:
+      - ENV: "staging"
+
+probes:
+  - name: "Health Check"
+    type: rest
+    endpoint: "${BASE_URL}/health"
+    validation:              # used by Staging; ignored by Production
+      status: "2xx"
+      response_time: 2000
 ```
 
 ---
@@ -358,7 +532,7 @@ validation:
 | `present` | Fields must exist | Headers, Body |
 | `absent` | Fields must NOT exist | Headers, Body |
 | `equals` | Exact value match | Headers, Body |
-| `matches` | Regex pattern match | Headers, Body |
+| `matches` | Regex pattern match (non-strings coerced to string) | Headers, Body |
 | `type` | Type checking | Body |
 | `contains` | Substring / array element | Headers, Body |
 | `range` | Numeric bounds | Body |
@@ -417,7 +591,8 @@ body:
 body:
   matches:
     user.email: "^[a-z]+@example\\.com$"
-    user.id: "^[0-9]+$"
+    user.id: "^[0-9]+$"     # string field
+    user.age: "^\\d+$"      # integer field — coerced to string before matching
 ```
 
 **type:**
@@ -430,7 +605,8 @@ body:
     user.active: boolean
     user.tags: array
     user.metadata: object
-    user.deleted_at: "null"    # Quote "null"
+    user.deleted_at: null        # unquoted null works
+    user.deleted_at: "null"      # quoted string also works
 ```
 
 **contains:**
@@ -445,10 +621,12 @@ body:
 ```yaml
 body:
   range:
-    user.age: [18, 100]       # Min and max (inclusive)
-    user.score: [0, null]     # Min only
-    user.balance: [null, 1000]  # Max only
+    user.age: [18, 100]         # Min and max (inclusive)
+    user.score: [0, null]       # Min only (no upper bound)
+    user.balance: [null, 1000]  # Max only (no lower bound)
 ```
+
+> **Note:** Range bounds must be literal numbers or `null`. Variable substitution (`${VAR}`) is not supported for range bounds — use literal values only.
 
 **length:**
 ```yaml
@@ -617,7 +795,7 @@ Variables are substituted using `${VAR_NAME}` syntax at execution time.
 - `body` (all nested values)
 - `query`
 - `variables` (GraphQL variable values)
-- All validation values (`equals`, `matches`, `contains`, `range` bounds)
+- All validation values (`equals`, `matches`, `contains`)
 
 ❌ **Not supported:**
 - Validation field paths / keys (e.g. `${FIELD}: value` on the left side)
@@ -736,25 +914,49 @@ limit: 10            # YAML native integer — preferred for literals
 
 Execution progress is always printed to stderr. Actual response time is shown for every probe.
 
-### Output Format
+There are two distinct output sections: **live progress** printed as probes execute, and the **final report** printed after all probes complete.
+
+### Live Progress Format
+
+Printed to stderr immediately as each probe runs:
 
 ```
 ▶ Executing: Production Context
 ============================================================
   → OAuth Authentication
-  Endpoint: https://api.example.com/auth
-  Response time: 243ms
     ✓ Passed
 
   → Get User Profile
-  Endpoint: https://api.example.com/profile
-  Response time: 1821ms
     ✗ Failed (1 error(s))
 
   → Cleanup
-  Endpoint: https://api.example.com/cleanup
-  Response time: 88ms
     ⊗ Skipped: Variable CACHE_ID not defined
+```
+
+### Final Report Format
+
+Printed after all probes complete. Includes endpoint, response time, and error details:
+
+```
+============================================================
+VALIDATION FAILURES
+============================================================
+
+Production Context
+------------------------------------------------------------
+Probe: Get User Profile
+  Endpoint: https://api.example.com/profile
+  Response time: 1821ms
+  ✗ Expected status 200, got 404
+    Field: status_code
+    Expected: 200
+    Got: 404
+
+============================================================
+SUMMARY
+  Runs:   0/1 passed
+  Probes: 2/3 passed
+============================================================
 ```
 
 ### Progress Symbols
@@ -860,6 +1062,10 @@ validation:
     type: {...}
 ```
 
+### Supported Expressions in `ignore`
+
+Validation `ignore` expressions can reference `body.*` paths and captured output variables. The HTTP status code is **not** available as a variable in validation ignore expressions — use body paths and captured variables only.
+
 ### Examples
 
 ```yaml
@@ -867,7 +1073,7 @@ validation:
   status: "2xx"
 
   headers:
-    ignore: "status != 200"     # Skip header checks unless status is 200
+    ignore: "empty(body.data)"  # Skip header checks if body is empty
     present:
       - "X-Request-ID"
 
@@ -877,6 +1083,15 @@ validation:
       - "data.id"
     length:
       data: [1, 100]
+```
+
+```yaml
+# Using a captured output variable from a previous probe
+validation:
+  body:
+    ignore: "SKIP_BODY_CHECK == 'true'"   # SKIP_BODY_CHECK captured earlier
+    present:
+      - "data.results"
 ```
 
 ---
@@ -998,6 +1213,91 @@ probes:
           validation:
             status: 200
 ```
+
+### Example 5: Per-Execution Validation Overrides
+
+```yaml
+# Probe definitions are environment-agnostic.
+# Each execution supplies its own validation rules via !include.
+
+executions:
+  - name: "Production"
+    vars:
+      - BASE_URL: "https://api.prod.example.com"
+      - API_KEY: "${PROD_API_KEY}"
+    validations: !include validations/prod.yaml
+
+  - name: "Staging"
+    vars:
+      - BASE_URL: "https://api.staging.example.com"
+      - API_KEY: "${STAGING_API_KEY}"
+    validations: !include validations/staging.yaml
+
+probes:
+  - name: "Login"
+    type: rest
+    endpoint: "${BASE_URL}/auth/token"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      X-API-Key: "${API_KEY}"
+    body:
+      grant_type: "client_credentials"
+    output:
+      TOKEN: "data.access_token"
+
+  - name: "Get User"
+    type: rest
+    endpoint: "${BASE_URL}/user"
+    headers:
+      Authorization: "Bearer ${TOKEN}"
+```
+
+```yaml
+# validations/prod.yaml
+"Login":
+  status: 200
+  response_time: 300
+  body:
+    present:
+      - "data.access_token"
+      - "data.expires_in"
+    type:
+      data.access_token: string
+      data.expires_in: integer
+
+"Get User":
+  status: 200
+  response_time: 300
+  body:
+    present:
+      - "data.id"
+      - "data.email"
+      - "data.role"
+    absent:
+      - "debug"
+      - "internal_flags"
+    type:
+      data.id: string
+      data.role: string
+```
+
+```yaml
+# validations/staging.yaml
+"Login":
+  status: 200
+  body:
+    present:
+      - "data.access_token"
+
+"Get User":
+  status: "2xx"
+  body:
+    present:
+      - "data.id"
+```
+
+---
 
 ### Example 4: Retry, Timeout, and Debug
 
