@@ -388,20 +388,19 @@ class ProbeExecutor:
             return ignore_value
 
         if isinstance(ignore_value, str):
+            # Substitute ${VAR} first so both plain values and expressions work correctly
+            substitutor = VariableSubstitutor(context.variables)
+            try:
+                ignore_value = substitutor.substitute(ignore_value)
+            except ValueError:
+                return False  # undefined variable — don't ignore
+
             if self.expression_evaluator.is_expression(ignore_value):
                 return self.expression_evaluator.evaluate(ignore_value, context.variables)
 
-            if ignore_value.startswith("${") and ignore_value.endswith("}"):
-                substitutor = VariableSubstitutor(context.variables)
-                try:
-                    resolved = substitutor.substitute(ignore_value)
-                    if isinstance(resolved, str):
-                        return resolved.lower() in ('true', '1', 'yes', 'on')
-                    return bool(resolved)
-                except Exception:
-                    return False
-
-            return ignore_value.lower() in ('true', '1', 'yes', 'on')
+            if isinstance(ignore_value, str):
+                return ignore_value.lower() in ('true', '1', 'yes', 'on')
+            return bool(ignore_value)
 
         if isinstance(ignore_value, int):
             return bool(ignore_value)

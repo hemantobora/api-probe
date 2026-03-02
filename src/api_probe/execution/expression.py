@@ -57,10 +57,11 @@ class ExpressionEvaluator:
             expr = self._evaluate_functions(expr, variables)
             
             # Replace operators with Python equivalents
+            # Handle != before ! to avoid corrupting it
             expr = expr.replace('&&', ' and ')
             expr = expr.replace('||', ' or ')
-            expr = expr.replace('!', ' not ')
-            
+            expr = re.sub(r'!(?!=)', ' not ', expr)  # ! only when not followed by =
+
             # Evaluate the expression
             result = eval(expr, {"__builtins__": {}}, {})
             
@@ -72,42 +73,62 @@ class ExpressionEvaluator:
     
     def _substitute_variables(self, expression: str, variables: Dict[str, Any]) -> str:
         """Substitute variable names with their string representations.
-        
+
+        Handles both ${VAR} syntax and bare variable name references.
+
         Args:
             expression: Expression string
             variables: Variable context
-            
+
         Returns:
             Expression with variables substituted
         """
-        # Find all variable references (alphanumeric + underscore)
-        # But avoid function names
         result = expression
-        
+
+        # First pass: handle ${VAR} syntax — substitute and quote string values
+        # so eval() treats them as string literals, not bare names
+        def dollar_replacer(match):
+            var_name = match.group(1)
+            if var_name in variables:
+                value = variables[var_name]
+                if value is None:
+                    return 'None'
+                elif isinstance(value, bool):
+                    return str(value)
+                elif isinstance(value, (int, float)):
+                    return str(value)
+                elif isinstance(value, (list, dict)):
+                    return repr(value)
+                else:
+                    return repr(str(value))  # wrap in quotes so eval sees a string literal
+            return match.group(0)  # leave unresolved ${VAR} as-is
+
+        result = re.sub(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}', dollar_replacer, result)
+
+        # Second pass: handle bare variable name references (captured output vars etc.)
         # Sort by length (longest first) to avoid partial replacements
         var_names = sorted(variables.keys(), key=len, reverse=True)
-        
+
         for var_name in var_names:
-            # Only replace if it's a standalone word (not part of function name)
-            pattern = r'\b' + re.escape(var_name) + r'\b'
+            # Only replace standalone words — not inside ${...} and not function names
+            pattern = r'(?<!\$\{)\b' + re.escape(var_name) + r'\b'
             value = variables[var_name]
-            
-            # Convert to Python representation
+
             if value is None:
                 replacement = 'None'
-            elif isinstance(value, str):
-                replacement = repr(value)
             elif isinstance(value, bool):
                 replacement = str(value)
             elif isinstance(value, (int, float)):
                 replacement = str(value)
             elif isinstance(value, (list, dict)):
                 replacement = repr(value)
+            elif isinstance(value, str):
+                replacement = repr(value)
             else:
                 replacement = repr(str(value))
-            
+
             result = re.sub(pattern, replacement, result)
-        
+
         return result
     
     def _evaluate_functions(self, expression: str, variables: Dict[str, Any]) -> str:
@@ -236,10 +257,11 @@ class ExpressionEvaluator:
             expr = self._substitute_variables(expr, temp_vars)
             
             # Replace operators with Python equivalents
+            # Handle != before ! to avoid corrupting it
             expr = expr.replace('&&', ' and ')
             expr = expr.replace('||', ' or ')
-            expr = expr.replace('!', ' not ')
-            
+            expr = re.sub(r'!(?!=)', ' not ', expr)  # ! only when not followed by =
+
             # Evaluate
             result = eval(expr, {"__builtins__": {}}, {})
             return result

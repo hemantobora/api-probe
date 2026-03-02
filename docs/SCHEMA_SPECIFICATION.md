@@ -935,7 +935,9 @@ Printed to stderr immediately as each probe runs:
 
 ### Final Report Format
 
-Printed after all probes complete. Includes endpoint, response time, and error details:
+Printed after all probes complete. Includes endpoint, response time, and error details.
+
+On **failure:**
 
 ```
 ============================================================
@@ -952,10 +954,41 @@ Probe: Get User Profile
     Expected: 200
     Got: 404
 
+Probe: Cleanup
+  Endpoint: https://api.example.com/cleanup
+  ⊗ Skipped: Variable CACHE_ID not defined
+
 ============================================================
 SUMMARY
   Runs:   0/1 passed
-  Probes: 2/3 passed
+  Probes: 1/3 passed
+  Skipped: 1/3 skipped
+============================================================
+```
+
+On **success:**
+
+```
+============================================================
+VALIDATION PASSED
+============================================================
+
+Production Context
+------------------------------------------------------------
+Probe: OAuth Authentication
+  Endpoint: https://api.example.com/auth
+  Response time: 243ms
+  ✓ Passed
+
+Probe: Get User Profile
+  Endpoint: https://api.example.com/profile
+  Response time: 1821ms
+  ✓ Passed
+
+============================================================
+SUMMARY
+  Runs:   1/1 passed
+  Probes: 2/2 passed
 ============================================================
 ```
 

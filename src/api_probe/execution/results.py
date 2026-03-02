@@ -27,13 +27,18 @@ class RunResult:
     
     @property
     def success(self) -> bool:
-        """Check if all probes in this run succeeded."""
-        return all(p.success for p in self.probe_results)
+        """Check if all non-skipped probes in this run succeeded."""
+        return all(p.success for p in self.probe_results if not p.skipped)
     
     @property
     def failed_probes(self) -> List[ProbeResult]:
         """Get list of failed probes."""
         return [p for p in self.probe_results if not p.success and not p.skipped]
+    
+    @property
+    def skipped_probes(self) -> List[ProbeResult]:
+        """Get list of skipped probes."""
+        return [p for p in self.probe_results if p.skipped]
 
 
 @dataclass
@@ -65,3 +70,8 @@ class ExecutionResult:
     def failed_probes(self) -> int:
         """Total number of failed probes across all runs."""
         return sum(len(r.failed_probes) for r in self.run_results)
+
+    @property
+    def skipped_probes(self) -> int:
+        """Total number of skipped probes across all runs."""
+        return sum(len(r.skipped_probes) for r in self.run_results)

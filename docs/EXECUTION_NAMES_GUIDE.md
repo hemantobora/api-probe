@@ -21,6 +21,10 @@ Probe: <Probe Name>
     Expected: <value>
     Got: <value>
 
+Probe: <Skipped Probe Name>
+  Endpoint: <URL>
+  ⊗ Skipped: <reason>
+
 <Execution Name 2>
 ------------------------------------------------------------
 Probe: <Probe Name>
@@ -32,6 +36,7 @@ Probe: <Probe Name>
 SUMMARY
   Runs:   <passed>/<total> passed
   Probes: <passed>/<total> passed
+  Skipped: <count>/<total> skipped    # only shown when skipped > 0
 ============================================================
 ```
 
@@ -173,8 +178,9 @@ SUMMARY
 
 1. **Execution names help identify context** - You immediately know which user/environment failed
 2. **Only failed executions appear in the failure report** - If an execution passes all probes, it's not shown in the failure report (but does appear in the success report)
-3. **Auto-generated names are unique** - Each run gets a different random name
-4. **Summary shows totals** - Total runs, failed runs, and probes counts
+3. **Skipped probes appear separately** - Skipped probes are listed with `⊗` in the report but are not counted as failures; a run with only skipped probes is considered successful
+4. **Auto-generated names are unique** - Each run gets a different random name
+5. **Summary shows totals** - Passed runs, passed probes, and optionally skipped probes
 
 ## Benefits
 

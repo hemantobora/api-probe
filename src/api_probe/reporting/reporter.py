@@ -83,7 +83,7 @@ class Reporter:
         self._print_summary(result)
 
     def _report_run_failures(self, run_result: RunResult) -> None:
-        """Report failures for a single run."""
+        """Report failures (and any skipped probes) for a single run."""
         if run_result.run_name:
             print(f"{run_result.run_name}", file=sys.stderr)
         else:
@@ -91,7 +91,9 @@ class Reporter:
         print("-" * 60, file=sys.stderr)
 
         for probe_result in run_result.probe_results:
-            if not probe_result.success:
+            if probe_result.skipped:
+                self._report_probe_skipped(probe_result)
+            elif not probe_result.success:
                 self._report_probe_failure(probe_result)
 
         print(file=sys.stderr)
@@ -105,16 +107,23 @@ class Reporter:
         if probe_result.response_time_ms is not None:
             print(f"  Response time: {probe_result.response_time_ms}ms", file=sys.stderr)
 
-        if probe_result.skipped:
-            print(f"  ⊗ Skipped: {probe_result.skip_reason}", file=sys.stderr)
-        else:
-            for error in probe_result.errors:
-                print(f"  ✗ {error.message}", file=sys.stderr)
-                if error.validator != "execution":
-                    print(f"    Field: {error.field}", file=sys.stderr)
-                    print(f"    Expected: {error.expected}", file=sys.stderr)
-                    print(f"    Got: {error.actual}", file=sys.stderr)
+        for error in probe_result.errors:
+            print(f"  ✗ {error.message}", file=sys.stderr)
+            if error.validator != "execution":
+                print(f"    Field: {error.field}", file=sys.stderr)
+                print(f"    Expected: {error.expected}", file=sys.stderr)
+                print(f"    Got: {error.actual}", file=sys.stderr)
 
+        print(file=sys.stderr)
+
+    def _report_probe_skipped(self, probe_result: ProbeResult) -> None:
+        """Report a skipped probe."""
+        print(f"Probe: {probe_result.probe_name}", file=sys.stderr)
+
+        if probe_result.endpoint:
+            print(f"  Endpoint: {probe_result.endpoint}", file=sys.stderr)
+
+        print(f"  ⊗ Skipped: {probe_result.skip_reason}", file=sys.stderr)
         print(file=sys.stderr)
 
     # ------------------------------------------------------------------
@@ -124,10 +133,13 @@ class Reporter:
     def _print_summary(self, result: ExecutionResult) -> None:
         """Print the final counts summary."""
         passed_runs   = result.total_runs  - result.failed_runs
-        passed_probes = result.total_probes - result.failed_probes
+        passed_probes = result.total_probes - result.failed_probes - result.skipped_probes
+        skipped_probes = result.skipped_probes
 
         print("=" * 60, file=sys.stderr)
         print("SUMMARY", file=sys.stderr)
         print(f"  Runs:   {passed_runs}/{result.total_runs} passed", file=sys.stderr)
         print(f"  Probes: {passed_probes}/{result.total_probes} passed", file=sys.stderr)
+        if skipped_probes > 0:
+            print(f"  Skipped: {skipped_probes}/{result.total_probes} skipped", file=sys.stderr)
         print("=" * 60, file=sys.stderr)
