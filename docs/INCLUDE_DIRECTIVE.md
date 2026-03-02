@@ -34,25 +34,21 @@ variables:
   filters: !include includes/filters.json
 ```
 
-### ✅ Inside Included Files
+### ✅ Inside Included YAML Files
 ```yaml
 # config.yaml
-body: !include includes/outer.json
+body: !include includes/outer.yaml
 
-# includes/outer.json
-{
-  "nested": !include "inner.json"  # Nested includes work!
-}
+# includes/outer.yaml — nested !include works in YAML files
+key: value
+nested: !include inner.yaml
 ```
 
-### ❌ Where It Doesn't Work
-```yaml
-# Cannot include entire arrays
-probes: !include probes.yaml  # ❌
+> **Note:** Nested `!include` only works inside `.yaml`/`.yml` files, because `!include` is a YAML tag. It does not work inside `.json` or `.xml` files.
 
-# Cannot include validation specs  
-validation: !include validation.yaml  # ❌
-```
+### Notes on `!include` scope
+
+`!include` is processed at YAML load time and works anywhere in the config. However, the loaded content must match what that field expects structurally. For example, `body: !include payload.json` works because `body` expects an object — and the JSON file provides one. If the loaded content doesn't match the expected structure, the parser will raise an error at parse time, not at load time.
 
 ## Basic Usage
 
@@ -370,16 +366,14 @@ See:
    data: !include file-a.yaml  # ERROR: circular
    ```
 
-2. **Only for specific fields**
-   Valid locations:
-   - `body: !include ...` ✅
-   - `query: !include ...` ✅
-   - `variables: !include ...` ✅ (entire variables object)
-   - `variables.input: !include ...` ✅ (nested in variables)
-   
-   Invalid:
-   - `probes: !include ...` ❌ (cannot include entire probe arrays)
-   - `validation: !include ...` ❌ (cannot include validation specs)
+2. **Content must match the expected structure**
+   The `!include` tag itself works anywhere in YAML. What matters is whether the loaded content is the right type for that field:
+   - `body: !include payload.json` ✅ (JSON object matches body)
+   - `query: !include query.graphql` ✅ (text matches query string)
+   - `variables: !include vars.json` ✅ (JSON object matches variables)
+   - `validations: !include validations.yaml` ✅ (YAML dict matches validations)
+   - Nested `!include` inside included YAML files ✅
+   - Nested `!include` inside JSON/XML files ❌ (not YAML, tag not parsed)
 
 3. **File must exist at load time**
    - Files are loaded when config is parsed

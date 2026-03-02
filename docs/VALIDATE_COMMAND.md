@@ -1,11 +1,4 @@
-# Validate Command - Updated Summary
-
-## Changes Made
-
-### Output Changes ✅
-1. **All output to stderr** - CI/CD tools can capture separately
-2. **No value printing** - Only shows defined/not defined
-3. **Exit codes unchanged** - 0=valid, 1=invalid, 2=error
+# Validate Command
 
 ## Usage
 
@@ -188,32 +181,12 @@ echo "Step 3: Running probes..."
 ./run.sh "$CONFIG"
 ```
 
-## What Changed
+## Security Note
 
-### Before ❌
-- Mixed stdout/stderr output
-- Showed variable values (security risk)
-- `• BASE_URL = https://api.example.com`
+Only variable **names** are shown — never values. This ensures credentials and secrets are not exposed in CI/CD logs:
 
-### After ✅
-- All output to stderr
-- Only shows variable names
-- `• BASE_URL`
-
-## Security Benefit
-
-**Before:**
-```
-✓ Defined:
-  • API_KEY = prod-secret-key-abc123def456...
-  • PASSWORD = myP@ssw0rd!
-```
-
-**After:**
 ```
 ✓ Defined:
   • API_KEY
   • PASSWORD
 ```
-
-No secrets in logs! 🔒

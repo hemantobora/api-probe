@@ -83,7 +83,7 @@ probes:                       # REQUIRED: List of probes and groups
       contains:
         field: "substring"
       range:
-        field: [min, max]         # Use null for open-ended: [0, null]
+        field: [min, max]         # Use null for open-ended: [0, null] — bounds must be literal numbers, not ${VAR}
       length:
         field: 5                  # Exact length
         field: [min, max]         # Length range

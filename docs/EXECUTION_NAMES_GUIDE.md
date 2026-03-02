@@ -15,22 +15,23 @@ VALIDATION FAILURES
 ------------------------------------------------------------
 Probe: <Probe Name>
   Endpoint: <URL>
+  Response time: <ms>
   ✗ <Error details>
-
-Probe: <Another Probe Name>
-  ✗ <Error details>
+    Field: <field>
+    Expected: <value>
+    Got: <value>
 
 <Execution Name 2>
 ------------------------------------------------------------
 Probe: <Probe Name>
+  Endpoint: <URL>
+  Response time: <ms>
   ✗ <Error details>
 
 ============================================================
 SUMMARY
-  Total Runs: <number of executions>
-  Failed Runs: <how many failed>/<total>
-  Total Probes: <total probes across all executions>
-  Failed Probes: <failed>/<total>
+  Runs:   <passed>/<total> passed
+  Probes: <passed>/<total> passed
 ============================================================
 ```
 
@@ -135,6 +136,7 @@ Production User
 ------------------------------------------------------------
 Probe: Validation Test
   Endpoint: https://httpbin.org/post
+  Response time: 312ms
   ✗ Field 'json.actual': expected 'wrong-A', got 'correct'
     Field: json.actual
     Expected: wrong-A
@@ -144,15 +146,17 @@ Staging User
 ------------------------------------------------------------
 Probe: Validation Test
   Endpoint: https://httpbin.org/post
+  Response time: 289ms
   ✗ Field 'json.actual': expected 'wrong-B', got 'correct'
     Field: json.actual
     Expected: wrong-B
     Got: correct
 
-beautiful-london
+beautiful-tokyo
 ------------------------------------------------------------
 Probe: Validation Test
   Endpoint: https://httpbin.org/post
+  Response time: 301ms
   ✗ Field 'json.actual': expected 'wrong-C', got 'correct'
     Field: json.actual
     Expected: wrong-C
@@ -160,17 +164,15 @@ Probe: Validation Test
 
 ============================================================
 SUMMARY
-  Total Runs: 3
-  Failed Runs: 3/3
-  Total Probes: 3
-  Failed Probes: 3/3
+  Runs:   0/3 passed
+  Probes: 0/3 passed
 ============================================================
 ```
 
 ## Key Points
 
 1. **Execution names help identify context** - You immediately know which user/environment failed
-2. **Only failed executions appear** - If an execution passes all probes, it's not shown
+2. **Only failed executions appear in the failure report** - If an execution passes all probes, it's not shown in the failure report (but does appear in the success report)
 3. **Auto-generated names are unique** - Each run gets a different random name
 4. **Summary shows totals** - Total runs, failed runs, and probes counts
 

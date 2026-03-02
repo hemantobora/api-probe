@@ -44,17 +44,6 @@ docker run --rm \
   api-probe:latest /configs/passing/simple.yaml
 ```
 
-### Multi-Value Variables (Parallel Runs)
-
-```bash
-# Test multiple contexts in one run
-docker run --rm \
-  -v $(pwd)/examples:/configs \
-  -e CLIENT_ID="client1,client2,client3" \
-  -e REGION="us-east,eu-west" \
-  api-probe:latest /configs/passing/multi-value.yaml
-```
-
 ### Using Environment File
 
 ```bash

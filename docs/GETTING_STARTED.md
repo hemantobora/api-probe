@@ -154,8 +154,8 @@ probes:
 
 ## Exit Codes
 
-- `0` - All probes passed (silent, no output)
-- `1` - One or more probes failed (verbose output)
+- `0` - All probes passed
+- `1` - One or more probes failed
 - `2` - Configuration error
 
 ## Validate Your Config
@@ -208,7 +208,7 @@ executions:
 2. Variables are isolated between executions
 3. Execution vars override environment vars
 4. Use `${VAR}` in execution vars to reference environment
-5. If no name provided, generates like "elegant-london"
+5. If no name provided, generates like "elegant-tokyo"
 
 ### No Executions Block
 
@@ -229,10 +229,10 @@ export API_URL="https://api.example.com"
 
 Works in:
 - ✓ Endpoints
-- ✓ Headers (keys and values)
+- ✓ Headers (values only — keys are static)
 - ✓ Request bodies
 - ✓ GraphQL queries and variables
-- ✓ **Validation values** (NEW!)
+- ✓ Validation values
 
 ```yaml
 validation:
