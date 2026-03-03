@@ -1031,7 +1031,8 @@ SUMMARY
 | `▶` | Execution context starting |
 | `→` | Probe starting |
 | `✓ Passed` | Probe passed with validation |
-| `✓ Passed (validation skipped)` | Probe executed but no validation was run (probe not listed in execution's `validations` block) |
+| `✓ Passed (no validation)` | Probe executed but has no inline `validation:` block defined |
+| `✓ Passed (validation skipped)` | Probe executed but validation was explicitly suppressed via `~` null override in the execution's `validations` block |
 | `✗` | Probe failed |
 | `⊗` | Probe skipped (not executed) |
 

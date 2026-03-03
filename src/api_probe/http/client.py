@@ -121,6 +121,7 @@ class HTTPClient:
                         self._print(f"[DEBUG] Request failed: {e}")
 
                     if attempt < max_attempts:
+                        self._print(f"\r    ↺ Retry {attempt}/{max_attempts - 1}: {type(e).__name__} — waiting {retry_delay}s...")
                         if debug:
                             self._print(f"[DEBUG] Retrying in {retry_delay}s...")
                         time.sleep(retry_delay)

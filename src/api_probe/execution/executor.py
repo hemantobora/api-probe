@@ -30,10 +30,17 @@ def _println(*args, **kwargs):
 
 
 def _print_block(lines: List[str]):
-    """Print multiple lines atomically - no other thread can interleave."""
+    """Print multiple lines atomically - no other thread can interleave.
+    Prefixes the first line with \\r to overwrite any spinner dot residue.
+    """
     with _print_lock:
+        first = True
         for line in lines:
-            print(line, file=sys.stderr)
+            if first:
+                print(f"\r{line}", file=sys.stderr)
+                first = False
+            else:
+                print(line, file=sys.stderr)
 
 
 class _Spinner:
@@ -147,7 +154,7 @@ class ProbeExecutor:
         lock = threading.Lock()
 
         total_probes = self._count_probes(config)
-        _println(f"\n\u25b6 Executing: {total_probes} probes in {num} executions")
+        _println(f"\n\u25b6 Executing: {total_probes} probes in {num} execution(s)")
         _println("=" * 60)
 
         spinner = _Spinner()
@@ -367,7 +374,12 @@ class ProbeExecutor:
 
             # Print → and ✓/✗ atomically so no other thread can interleave between them
             if len(errors) == 0:
-                passed_msg = "Passed (validation skipped)" if validation_skipped else "Passed"
+                if validation_skipped:
+                    passed_msg = "Passed (validation skipped)"
+                elif validation_spec_dict is None:
+                    passed_msg = "Passed (no validation)"
+                else:
+                    passed_msg = "Passed"
                 if in_group:
                     _print_block([f"    → {probe.name}{exec_suffix}", f"    ✓ {probe.name} - {passed_msg}{exec_suffix}"])
                 else:
