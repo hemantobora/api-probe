@@ -39,6 +39,7 @@ class HTTPClient:
         retry: Optional[dict] = None,
         debug: bool = False,
         verify: bool = True,
+        retry_log: Optional[list] = None,
     ) -> requests.Response:
         """Execute HTTP request with retry support.
 
@@ -121,7 +122,11 @@ class HTTPClient:
                         self._print(f"[DEBUG] Request failed: {e}")
 
                     if attempt < max_attempts:
-                        self._print(f"\r    ↺ Retry {attempt}/{max_attempts - 1}: {type(e).__name__} — waiting {retry_delay}s...")
+                        msg = f"    ↺ Retry {attempt}/{max_attempts - 1}: {type(e).__name__} — waiting {retry_delay}s..."
+                        if retry_log is not None:
+                            retry_log.append(msg)
+                        else:
+                            self._print(f"\r{msg}")
                         if debug:
                             self._print(f"[DEBUG] Retrying in {retry_delay}s...")
                         time.sleep(retry_delay)

@@ -343,12 +343,14 @@ class ProbeExecutor:
                     headers=probe_substituted.headers,
                 )
 
+            retry_log = []
             response = self.http_client.execute(
                 request_params,
                 timeout=probe.timeout,
                 retry=probe.retry,
                 debug=probe.debug,
                 verify=probe_substituted.verify,
+                retry_log=retry_log,
             )
 
             errors = []
@@ -370,10 +372,11 @@ class ProbeExecutor:
             if validation_spec_dict is not None:
                 errors = self.validation_engine.validate(probe.name, response, validation_spec_dict)
 
+            output_warnings = []
             if probe_substituted.output:
-                self.output_capture.capture(response, probe_substituted.output, context)
+                output_warnings = self.output_capture.capture(response, probe_substituted.output, context)
 
-            # Print → and ✓/✗ atomically so no other thread can interleave between them
+            # Print → retry lines output_warnings ✓/✗ atomically so no other thread can interleave
             if len(errors) == 0:
                 if validation_skipped:
                     passed_msg = "Passed (validation skipped)"
@@ -382,14 +385,21 @@ class ProbeExecutor:
                 else:
                     passed_msg = "Passed"
                 if in_group:
-                    _print_block([f"    → {probe.name}{exec_suffix}", f"    ✓ {probe.name} - {passed_msg}{exec_suffix}"])
+                    _print_block([f"    → {probe.name}{exec_suffix}"] + retry_log + output_warnings + [f"      ✓ {passed_msg}{exec_suffix}"])
                 else:
-                    _print_block([f"  → {probe.name}{exec_suffix}", f"    ✓ {passed_msg}{exec_suffix}"])
+                    _print_block([f"  → {probe.name}{exec_suffix}"] + retry_log + output_warnings + [f"    ✓ {passed_msg}{exec_suffix}"])
             else:
                 if in_group:
-                    _print_block([f"    → {probe.name}{exec_suffix}", f"    ✗ {probe.name} - Failed ({len(errors)} error(s)){exec_suffix}"])
+                    _print_block([f"    → {probe.name}{exec_suffix}"] + retry_log + output_warnings + [f"      ✗ Failed ({len(errors)} error(s)){exec_suffix}"])
                 else:
-                    _print_block([f"  → {probe.name}{exec_suffix}", f"    ✗ Failed ({len(errors)} error(s)){exec_suffix}"])
+                    _print_block([f"  → {probe.name}{exec_suffix}"] + retry_log + output_warnings + [f"    ✗ Failed ({len(errors)} error(s)){exec_suffix}"])
+
+            if validation_skipped:
+                v_state = "validation_skipped"
+            elif validation_spec_dict is None:
+                v_state = "no_validation"
+            else:
+                v_state = "passed"
 
             return ProbeResult(
                 probe_name=probe.name,
@@ -397,6 +407,7 @@ class ProbeExecutor:
                 errors=errors,
                 endpoint=probe_substituted.endpoint,
                 response_time_ms=getattr(response, 'elapsed_ms', None),
+                validation_state=v_state,
             )
 
         except ValueError as e:

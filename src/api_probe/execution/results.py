@@ -16,6 +16,8 @@ class ProbeResult:
     skip_reason: str = ""
     endpoint: Optional[str] = None  # Parsed endpoint (after variable substitution)
     response_time_ms: Optional[int] = None  # Actual response time in milliseconds
+    # One of: "passed", "no_validation", "validation_skipped"
+    validation_state: str = "passed"
 
 
 @dataclass
@@ -27,8 +29,14 @@ class RunResult:
     
     @property
     def success(self) -> bool:
-        """Check if all non-skipped probes in this run succeeded."""
-        return all(p.success for p in self.probe_results if not p.skipped)
+        """Check if this run succeeded.
+
+        A run succeeds only if every probe ran and passed.
+        Any failure or skip is treated as a failure for CI purposes.
+        """
+        if not self.probe_results:
+            return False
+        return all(p.success and not p.skipped for p in self.probe_results)
     
     @property
     def failed_probes(self) -> List[ProbeResult]:

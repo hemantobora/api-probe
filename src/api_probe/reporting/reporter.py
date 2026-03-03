@@ -62,6 +62,10 @@ class Reporter:
 
         if probe_result.skipped:
             print(f"  ⊗ Skipped: {probe_result.skip_reason}", file=sys.stderr)
+        elif probe_result.validation_state == "validation_skipped":
+            print(f"  ✓ Passed (validation skipped)", file=sys.stderr)
+        elif probe_result.validation_state == "no_validation":
+            print(f"  ✓ Passed (no validation)", file=sys.stderr)
         else:
             print(f"  ✓ Passed", file=sys.stderr)
 
@@ -136,15 +140,23 @@ class Reporter:
     # ------------------------------------------------------------------
 
     def _print_summary(self, result: ExecutionResult) -> None:
-        """Print the final counts summary."""
-        passed_runs   = result.total_runs  - result.failed_runs
-        passed_probes = result.total_probes - result.failed_probes - result.skipped_probes
-        skipped_probes = result.skipped_probes
+        """Print the final counts summary with per-run breakdown."""
+        passed_runs = result.total_runs - result.failed_runs
 
         print("=" * 60, file=sys.stderr)
         print("SUMMARY", file=sys.stderr)
         print(f"  Runs:   {passed_runs}/{result.total_runs} passed", file=sys.stderr)
-        print(f"  Probes: {passed_probes}/{result.total_probes} passed", file=sys.stderr)
-        if skipped_probes > 0:
-            print(f"  Skipped: {skipped_probes}/{result.total_probes} skipped", file=sys.stderr)
+
+        for run_result in result.run_results:
+            run_name = run_result.run_name or f"Run {run_result.run_index + 1}"
+            total = len(run_result.probe_results)
+            skipped = len(run_result.skipped_probes)
+            failed = len(run_result.failed_probes)
+            passed = total - failed - skipped
+            run_status = "✓" if run_result.success else "✗"
+            line = f"    {run_status} {run_name}: {passed}/{total} passed"
+            if skipped > 0:
+                line += f", {skipped} skipped"
+            print(line, file=sys.stderr)
+
         print("=" * 60, file=sys.stderr)

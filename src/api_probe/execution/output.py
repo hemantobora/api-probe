@@ -1,7 +1,7 @@
 """Output variable capture from responses."""
 
 import sys
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from .context import ExecutionContext
 from .expression import ExpressionEvaluator
@@ -25,7 +25,7 @@ class OutputCapture:
         response: Any,
         output_spec: Dict[str, str],
         context: ExecutionContext,
-    ) -> None:
+    ) -> List[str]:
         """Capture output variables from response.
 
         Args:
@@ -36,6 +36,7 @@ class OutputCapture:
         Raises:
             ValueError: If path is invalid or extraction fails
         """
+        warnings = []
         for var_name, path_or_expr in output_spec.items():
             if self.expression_evaluator.is_expression(path_or_expr):
                 try:
@@ -44,15 +45,24 @@ class OutputCapture:
                     )
                     context.set_variable(var_name, value)
                 except Exception as e:
-                    print(
-                        f"[WARN] Failed to evaluate output expression '{path_or_expr}' "
-                        f"for variable '{var_name}': {e}",
-                        file=sys.stderr,
+                    warnings.append(
+                        f"    [WARN] Output capture failed for '{var_name}' "
+                        f"(expression: '{path_or_expr}'): {e} — variable will be unset"
                     )
-                    context.set_variable(var_name, None)
+                    # Do NOT set the variable — leaves it unset so downstream
+                    # probes that reference ${var_name} are skipped, not run with 'None'
             else:
-                value = self._extract_value(response, path_or_expr)
-                context.set_variable(var_name, value)
+                try:
+                    value = self._extract_value(response, path_or_expr)
+                    context.set_variable(var_name, value)
+                except Exception as e:
+                    warnings.append(
+                        f"    [WARN] Output capture failed for '{var_name}' "
+                        f"(path: '{path_or_expr}'): {e} — variable will be unset"
+                    )
+                    # Do NOT set the variable — leaves it unset so downstream
+                    # probes that reference ${var_name} are skipped, not run with 'None'
+        return warnings
 
     def _extract_value(self, response: Any, path: str) -> Any:
         """Extract value from response using path.
