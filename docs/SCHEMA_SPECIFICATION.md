@@ -140,17 +140,29 @@ executions:
 
 When a probe runs, its validation is resolved in this order:
 
-1. If `validations` in the current execution has a key matching the probe name → that spec is used
-2. Otherwise, the probe's own inline `validation:` block is used
+1. If the execution has a `validations` block **and** the probe name is a key in it → that spec is used (or skipped if the value is `null`)
+2. Otherwise → the probe's own inline `validation:` block is used
 3. If neither is present → no validation is run for that probe
+
+In other words: **probes not listed in the `validations` block fall back to their inline `validation:` as normal**. The `validations` block is a selective override, not an allowlist.
+
+To explicitly suppress validation for a specific probe (overriding its inline `validation:`), set its value to `null`:
+
+```yaml
+validations:
+  "Probe A":       ~   # null — explicitly skip validation
+  "Probe B":
+    status: 200
+```
 
 Variable substitution (`${VAR}`) is applied to override specs at runtime, exactly as it is for inline validation.
 
 ### Key Rules
 
 - Keys in `validations` must match probe names **exactly** (case-sensitive)
-- Probes without a matching key are unaffected
+- Probes not listed in the `validations` block are **unaffected** — they fall back to their inline `validation:` as normal
 - The override is **total replacement**, not a merge — if you override a probe, specify everything you want validated
+- Set a probe's value to `null` (`~`) to explicitly suppress validation for that probe (overrides its inline `validation:`)
 - Works with `!include` — the entire `validations` dict can be loaded from an external file
 
 ### Inline File per Execution
@@ -918,32 +930,47 @@ There are two distinct output sections: **live progress** printed as probes exec
 
 ### Live Progress Format
 
-Printed to stderr immediately as each probe runs:
+Printed to stderr immediately as each probe runs. When multiple executions are active, each line is suffixed with `[execution name]` so interleaved output from concurrent executions is identifiable:
 
 ```
-▶ Executing: Production Context
-============================================================
+  → OAuth Authentication [Production]
+    ✓ Passed [Production]
+  → OAuth Authentication [Staging]
+    ✓ Passed (validation skipped) [Staging]
+  → Get User Profile [Production]
+    ✓ Passed [Production]
+  → Get User Profile [Staging]
+    ✗ Failed (1 error(s)) [Staging]
+  → Cleanup [Production]
+    ⊗ Skipped: Variable CACHE_ID not defined
+```
+
+For single-execution runs (no `executions` block), the suffix is omitted:
+
+```
   → OAuth Authentication
     ✓ Passed
 
   → Get User Profile
     ✗ Failed (1 error(s))
-
-  → Cleanup
-    ⊗ Skipped: Variable CACHE_ID not defined
 ```
 
 ### Final Report Format
 
-Printed after all probes complete. Includes endpoint, response time, and error details.
+When using `executions`, the live interleaved progress is followed by a separator and then the full structured report, printed once all executions have completed. Each execution gets its own section headed by `▶ Executed: <name>`.
 
 On **failure:**
 
 ```
 ============================================================
+EXECUTION COMPLETE — FULL REPORT
+============================================================
+============================================================
 VALIDATION FAILURES
 ============================================================
 
+▶ Executed: Production Context
+============================================================
 Production Context
 ------------------------------------------------------------
 Probe: Get User Profile
@@ -970,9 +997,14 @@ On **success:**
 
 ```
 ============================================================
+EXECUTION COMPLETE — FULL REPORT
+============================================================
+============================================================
 VALIDATION PASSED
 ============================================================
 
+▶ Executed: Production Context
+============================================================
 Production Context
 ------------------------------------------------------------
 Probe: OAuth Authentication
@@ -998,9 +1030,10 @@ SUMMARY
 |--------|---------|
 | `▶` | Execution context starting |
 | `→` | Probe starting |
-| `✓` | Probe passed |
+| `✓ Passed` | Probe passed with validation |
+| `✓ Passed (validation skipped)` | Probe executed but no validation was run (probe not listed in execution's `validations` block) |
 | `✗` | Probe failed |
-| `⊗` | Probe skipped |
+| `⊗` | Probe skipped (not executed) |
 
 ### Response Time
 

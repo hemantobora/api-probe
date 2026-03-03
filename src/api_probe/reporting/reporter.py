@@ -26,7 +26,11 @@ class Reporter:
 
     def _report_success(self, result: ExecutionResult) -> None:
         """Print a success summary mirroring the failure report layout."""
+        has_multiple = len(result.run_results) > 1
         print("=" * 60, file=sys.stderr)
+        if has_multiple:
+            print("EXECUTION COMPLETE \u2014 FULL REPORT", file=sys.stderr)
+            print(file=sys.stderr)
         print("VALIDATION PASSED", file=sys.stderr)
         print("=" * 60, file=sys.stderr)
         print(file=sys.stderr)
@@ -38,10 +42,8 @@ class Reporter:
 
     def _report_run_success(self, run_result: RunResult) -> None:
         """Print passed probes for a single run."""
-        if run_result.run_name:
-            print(f"{run_result.run_name}", file=sys.stderr)
-        else:
-            print(f"Run {run_result.run_index + 1}", file=sys.stderr)
+        run_name = run_result.run_name or f"Run {run_result.run_index + 1}"
+        print(f"\u25b6 Executed: {run_name}", file=sys.stderr)
         print("-" * 60, file=sys.stderr)
 
         for probe_result in run_result.probe_results:
@@ -71,7 +73,11 @@ class Reporter:
 
     def _report_failures(self, result: ExecutionResult) -> None:
         """Report failures in detail."""
+        has_multiple = len(result.run_results) > 1
         print("=" * 60, file=sys.stderr)
+        if has_multiple:
+            print("EXECUTION COMPLETE \u2014 FULL REPORT", file=sys.stderr)
+            print(file=sys.stderr)
         print("VALIDATION FAILURES", file=sys.stderr)
         print("=" * 60, file=sys.stderr)
         print(file=sys.stderr)
@@ -84,10 +90,8 @@ class Reporter:
 
     def _report_run_failures(self, run_result: RunResult) -> None:
         """Report failures (and any skipped probes) for a single run."""
-        if run_result.run_name:
-            print(f"{run_result.run_name}", file=sys.stderr)
-        else:
-            print(f"Run {run_result.run_index + 1}", file=sys.stderr)
+        run_name = run_result.run_name or f"Run {run_result.run_index + 1}"
+        print(f"\u25b6 Executed: {run_name}", file=sys.stderr)
         print("-" * 60, file=sys.stderr)
 
         for probe_result in run_result.probe_results:

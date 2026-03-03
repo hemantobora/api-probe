@@ -1,6 +1,7 @@
 """Main probe executor - orchestrates entire execution flow."""
 
 import sys
+import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Union
@@ -33,6 +34,44 @@ def _print_block(lines: List[str]):
     with _print_lock:
         for line in lines:
             print(line, file=sys.stderr)
+
+
+class _Spinner:
+    """Provides the current spinner frame as a prefix for probe output lines.
+
+    Increments on a background thread. Callers read next_frame() to get
+    the current braille character to prepend to their → line.
+    No ’\\r’, no TTY detection, no line overwriting — the frame just appears
+    inline before the arrow on each probe start line.
+    """
+
+    _FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    _INTERVAL = 0.12
+
+    def __init__(self):
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self):
+        self._thread.start()
+
+    def stop(self):
+        self._stop_event.set()
+        self._thread.join()
+        with _print_lock:
+            print("\r  \r", end="", file=sys.stderr, flush=True)
+
+    def _run(self):
+        idx = 0
+        while not self._stop_event.is_set():
+            frame = self._FRAMES[idx % len(self._FRAMES)]
+            if _print_lock.acquire(blocking=False):
+                try:
+                    print(f"\r  {frame}", end="", file=sys.stderr, flush=True)
+                finally:
+                    _print_lock.release()
+            idx += 1
+            time.sleep(self._INTERVAL)
 
 
 class ProbeExecutor:
@@ -71,9 +110,13 @@ class ProbeExecutor:
         else:
             env_vars = get_env_variables()
             context = ExecutionContext(env_vars)
-            _println(f"\n▶ Executing probes...")
+            total_probes = self._count_probes(config)
+            _println(f"\n\u25b6 Executing: {total_probes} probes")
             _println("=" * 60)
-            run_result = self._execute_run(config, context, 0)
+            spinner = _Spinner()
+            spinner.start()
+            run_result = self._execute_run(config, context, 0, spinner)
+            spinner.stop()
             execution_result.run_results.append(run_result)
 
         return execution_result
@@ -103,12 +146,15 @@ class ProbeExecutor:
         run_results: Dict[int, RunResult] = {}
         lock = threading.Lock()
 
+        total_probes = self._count_probes(config)
+        _println(f"\n\u25b6 Executing: {total_probes} probes in {num} executions")
+        _println("=" * 60)
+
+        spinner = _Spinner()
+        spinner.start()
+
         def run_one(run_index: int, context: ExecutionContext):
-            _print_block([
-                f"\n▶ Executing: {context.execution_name}",
-                "=" * 60,
-            ])
-            run_result = self._execute_run(config, context, run_index)
+            run_result = self._execute_run(config, context, run_index, spinner)
             with lock:
                 run_results[run_index] = run_result
 
@@ -116,6 +162,11 @@ class ProbeExecutor:
             futures = [pool.submit(run_one, i, ctx) for i, ctx in contexts]
             for f in as_completed(futures):
                 f.result()
+
+        spinner.stop()
+
+        # Print separator between live progress ticker and the final buffered report
+        _println("\n" + "=" * 60)
 
         # Append results in original execution order
         for i in range(num):
@@ -156,6 +207,7 @@ class ProbeExecutor:
         config: Config,
         context: ExecutionContext,
         run_index: int,
+        spinner: _Spinner,
     ) -> RunResult:
         """Execute all probes in a single run context sequentially.
 
@@ -174,12 +226,12 @@ class ProbeExecutor:
             if isinstance(item, Probe):
                 if self._should_ignore(item, context):
                     continue
-                probe_result = self._execute_probe(item, context)
+                probe_result = self._execute_probe(item, context, spinner=spinner)
                 run_result.probe_results.append(probe_result)
             elif isinstance(item, Group):
                 if self._should_ignore(item, context):
                     continue
-                group_results = self._execute_group(item, context)
+                group_results = self._execute_group(item, context, spinner)
                 run_result.probe_results.extend(group_results)
 
         return run_result
@@ -192,6 +244,7 @@ class ProbeExecutor:
         self,
         group: Group,
         context: ExecutionContext,
+        spinner: _Spinner,
     ) -> List[ProbeResult]:
         """Execute probes in a group in parallel with live progress.
 
@@ -220,7 +273,7 @@ class ProbeExecutor:
         lock = threading.Lock()
 
         def run_probe(idx: int, probe: Probe):
-            result = self._execute_probe(probe, context, in_group=True)
+            result = self._execute_probe(probe, context, in_group=True, spinner=spinner)
             with lock:
                 results[idx] = result
 
@@ -240,6 +293,7 @@ class ProbeExecutor:
         probe: Probe,
         context: ExecutionContext,
         in_group: bool = False,
+        spinner: _Spinner = None,
     ) -> ProbeResult:
         """Execute a single probe with live atomic progress output.
 
@@ -255,12 +309,11 @@ class ProbeExecutor:
         Returns:
             Probe result
         """
+        # Suffix defined outside try so it's available in all except branches
+        exec_suffix = f" [{context.execution_name}]" if getattr(context, 'execution_name', None) else ""
         try:
             if probe.delay is not None and probe.delay > 0:
                 import time
-                # Print delay notice immediately so user sees the wait
-                if not in_group:
-                    _println(f"  → {probe.name} (waiting {probe.delay}s...)")
                 if probe.debug:
                     _println(f"[DEBUG] Waiting {probe.delay}s...")
                 time.sleep(probe.delay)
@@ -283,13 +336,6 @@ class ProbeExecutor:
                     headers=probe_substituted.headers,
                 )
 
-            # Print "starting" line before the HTTP call so the user sees
-            # the probe name immediately, not only after the response arrives
-            if not in_group:
-                _println(f"  → {probe.name}")
-            else:
-                _println(f"    → {probe.name}")
-
             response = self.http_client.execute(
                 request_params,
                 timeout=probe.timeout,
@@ -300,11 +346,18 @@ class ProbeExecutor:
 
             errors = []
             validation_spec_dict = None
-            if hasattr(context, 'validation_overrides') and probe.name in context.validation_overrides:
+            validation_skipped = False
+            has_overrides = hasattr(context, 'validation_overrides') and context.validation_overrides
+            if has_overrides and probe.name in context.validation_overrides:
                 override_raw = context.validation_overrides[probe.name]
-                validation_spec_dict = substitutor.substitute(override_raw)
+                if override_raw is not None:
+                    validation_spec_dict = substitutor.substitute(override_raw)
+                else:
+                    validation_skipped = True  # explicit null override (~) — skip validation
             elif probe_substituted.validation:
+                # No override for this probe — fall back to inline validation
                 validation_spec_dict = self._validation_to_dict(probe_substituted.validation, substitutor)
+            # else: no override and no inline validation — nothing to run (not a skip)
 
             if validation_spec_dict is not None:
                 errors = self.validation_engine.validate(probe.name, response, validation_spec_dict)
@@ -312,17 +365,18 @@ class ProbeExecutor:
             if probe_substituted.output:
                 self.output_capture.capture(response, probe_substituted.output, context)
 
-            # Print result line immediately after execution completes
+            # Print → and ✓/✗ atomically so no other thread can interleave between them
             if len(errors) == 0:
+                passed_msg = "Passed (validation skipped)" if validation_skipped else "Passed"
                 if in_group:
-                    _println(f"    ✓ {probe.name}")
+                    _print_block([f"    → {probe.name}{exec_suffix}", f"    ✓ {probe.name} - {passed_msg}{exec_suffix}"])
                 else:
-                    _println(f"    ✓ Passed")
+                    _print_block([f"  → {probe.name}{exec_suffix}", f"    ✓ {passed_msg}{exec_suffix}"])
             else:
                 if in_group:
-                    _println(f"    ✗ {probe.name} - Failed ({len(errors)} error(s))")
+                    _print_block([f"    → {probe.name}{exec_suffix}", f"    ✗ {probe.name} - Failed ({len(errors)} error(s)){exec_suffix}"])
                 else:
-                    _println(f"    ✗ Failed ({len(errors)} error(s))")
+                    _print_block([f"  → {probe.name}{exec_suffix}", f"    ✗ Failed ({len(errors)} error(s)){exec_suffix}"])
 
             return ProbeResult(
                 probe_name=probe.name,
@@ -334,9 +388,9 @@ class ProbeExecutor:
 
         except ValueError as e:
             if in_group:
-                _println(f"    ⊗ {probe.name} - Skipped: {e}")
+                _print_block([f"    → {probe.name}{exec_suffix}", f"    ⊗ {probe.name} - Skipped: {e}{exec_suffix}"])
             else:
-                _println(f"    ⊗ Skipped: {e}")
+                _print_block([f"  → {probe.name}{exec_suffix}", f"    ⊗ Skipped: {e}{exec_suffix}"])
             return ProbeResult(
                 probe_name=probe.name,
                 success=False,
@@ -347,9 +401,9 @@ class ProbeExecutor:
 
         except Exception as e:
             if in_group:
-                _println(f"    ✗ {probe.name} - Failed: {str(e)[:100]}")
+                _print_block([f"    → {probe.name}{exec_suffix}", f"    ✗ {probe.name} - Failed: {str(e)[:100]}{exec_suffix}"])
             else:
-                _println(f"    ✗ Failed: {str(e)[:100]}")
+                _print_block([f"  → {probe.name}{exec_suffix}", f"    ✗ Failed: {str(e)[:100]}{exec_suffix}"])
 
             from ..validation.base import ValidationError
 
@@ -377,6 +431,16 @@ class ProbeExecutor:
     # Helpers
     # ------------------------------------------------------------------
 
+    def _count_probes(self, config: Config) -> int:
+        """Count total probes across all top-level items (including group members)."""
+        total = 0
+        for item in config.probes:
+            if isinstance(item, Probe):
+                total += 1
+            elif isinstance(item, Group):
+                total += len(item.probes)
+        return total
+
     def _should_ignore(self, item: Union[Probe, Group], context: ExecutionContext) -> bool:
         """Check if probe or group should be ignored."""
         ignore_value = item.ignore
@@ -388,15 +452,17 @@ class ProbeExecutor:
             return ignore_value
 
         if isinstance(ignore_value, str):
-            # Substitute ${VAR} first so both plain values and expressions work correctly
+            if self.expression_evaluator.is_expression(ignore_value):
+                # Let the expression evaluator handle ${VAR} substitution itself
+                # so string values get properly quoted for eval()
+                return self.expression_evaluator.evaluate(ignore_value, context.variables)
+
+            # Not an expression — substitute ${VAR} and check for truthy string
             substitutor = VariableSubstitutor(context.variables)
             try:
                 ignore_value = substitutor.substitute(ignore_value)
             except ValueError:
                 return False  # undefined variable — don't ignore
-
-            if self.expression_evaluator.is_expression(ignore_value):
-                return self.expression_evaluator.evaluate(ignore_value, context.variables)
 
             if isinstance(ignore_value, str):
                 return ignore_value.lower() in ('true', '1', 'yes', 'on')

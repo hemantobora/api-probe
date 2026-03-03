@@ -2,7 +2,7 @@
 
 ## Overview
 
-When using the `executions` block, each execution's failures are grouped under its name in the failure report.
+When using the `executions` block, each execution's failures are grouped under its name in the final report. During live execution, each probe line is suffixed with `[execution name]` so interleaved output from concurrent executions stays readable.
 
 ## Report Structure
 
@@ -130,13 +130,30 @@ probes:
           json.actual: "${EXPECTED_VALUE}"
 ```
 
-### Output:
+### Live Progress Output:
+
+```
+  → Validation Test [Production User]
+  → Validation Test [Staging User]
+  → Validation Test [beautiful-tokyo]
+    ✗ Failed (1 error(s)) [Staging User]
+    ✗ Failed (1 error(s)) [Production User]
+    ✗ Failed (1 error(s)) [beautiful-tokyo]
+
+============================================================
+EXECUTION COMPLETE — FULL REPORT
+============================================================
+```
+
+### Final Report:
 
 ```
 ============================================================
 VALIDATION FAILURES
 ============================================================
 
+▶ Executed: Production User
+============================================================
 Production User
 ------------------------------------------------------------
 Probe: Validation Test
@@ -147,6 +164,8 @@ Probe: Validation Test
     Expected: wrong-A
     Got: correct
 
+▶ Executed: Staging User
+============================================================
 Staging User
 ------------------------------------------------------------
 Probe: Validation Test
@@ -157,6 +176,8 @@ Probe: Validation Test
     Expected: wrong-B
     Got: correct
 
+▶ Executed: beautiful-tokyo
+============================================================
 beautiful-tokyo
 ------------------------------------------------------------
 Probe: Validation Test
