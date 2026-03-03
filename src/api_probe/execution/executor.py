@@ -363,7 +363,8 @@ class ProbeExecutor:
                     validation_skipped = True  # explicit null override (~) — skip validation
             elif probe_substituted.validation:
                 # No override for this probe — fall back to inline validation
-                validation_spec_dict = self._validation_to_dict(probe_substituted.validation, substitutor)
+                spec = self._validation_to_dict(probe_substituted.validation, substitutor)
+                validation_spec_dict = spec if spec else None  # treat empty spec as no validation
             # else: no override and no inline validation — nothing to run (not a skip)
 
             if validation_spec_dict is not None:

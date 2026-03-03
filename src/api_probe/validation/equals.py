@@ -33,8 +33,8 @@ class EqualsValidator(Validator):
             try:
                 actual = self.extractor.extract(response, path)
                 
-                # Type-strict equality
-                if actual != expected or type(actual) != type(expected):
+                # Value equality (not type-strict — YAML booleans vs ints handled upstream)
+                if actual != expected:
                     errors.append(ValidationError(
                         test_name=test_name,
                         validator="equals",

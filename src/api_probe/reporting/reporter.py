@@ -83,8 +83,7 @@ class Reporter:
         print(file=sys.stderr)
 
         for run_result in result.run_results:
-            if not run_result.success:
-                self._report_run_failures(run_result)
+            self._report_run_failures(run_result)
 
         self._print_summary(result)
 
@@ -99,6 +98,8 @@ class Reporter:
                 self._report_probe_skipped(probe_result)
             elif not probe_result.success:
                 self._report_probe_failure(probe_result)
+            else:
+                self._report_probe_success(probe_result)
 
         print(file=sys.stderr)
 

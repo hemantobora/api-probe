@@ -137,7 +137,7 @@ class ConfigParser:
         
         return Group(probes=probes, name=name, ignore=ignore)
     
-    def _parse_validation(self, validation_dict: Dict[str, Any]) -> Validation:
+    def _parse_validation(self, validation_dict: Any) -> Validation:
         """Parse validation specification.
         
         Args:
@@ -145,7 +145,16 @@ class ConfigParser:
             
         Returns:
             Validation object
+
+        Raises:
+            ValueError: If validation_dict is not a dict (e.g. !include of a keyed file)
         """
+        if not isinstance(validation_dict, dict):
+            raise ValueError(
+                f"'validation' must be an object, got {type(validation_dict).__name__!r}. "
+                f"If using !include, ensure the file contains a bare validation spec "
+                f"(not keyed by probe name)"
+            )
         return Validation(
             status=validation_dict.get('status'),
             headers=validation_dict.get('headers'),

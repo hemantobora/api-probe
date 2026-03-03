@@ -177,6 +177,18 @@ class ConfigValidator:
                 f"got {type(probe['verify']).__name__!r} — defaulting to true"
             )
 
+        # Warn if 'validations' (plural) is used on a probe — it's an execution-level key
+        if 'validations' in probe:
+            name = probe.get('name', f'probe {index}')
+            self.warnings.append(
+                f"Probe {index} '{name}': 'validations' (plural) is not valid on a probe — "
+                f"use 'validation' (singular) for inline validation, or move to an 'executions' block"
+            )
+
+        # Validate inline validation block structure
+        if 'validation' in probe:
+            self._validate_validation_block(probe['validation'], index, probe.get('name', str(index)))
+
         # Validate retry config (fix #12)
         if 'retry' in probe:
             retry = probe['retry']
@@ -196,6 +208,62 @@ class ConfigValidator:
                             f"Probe {index}: 'retry.delay' must be a non-negative number, got {val!r}"
                         )
     
+    def _validate_validation_block(self, validation: Any, probe_index: Any, probe_name: str) -> None:
+        """Validate the structure of an inline validation block."""
+        if not isinstance(validation, dict):
+            self.errors.append(
+                f"Probe {probe_index} '{probe_name}': 'validation' must be an object, "
+                f"got {type(validation).__name__!r} — if using !include, ensure the file contains "
+                f"a bare validation spec (not keyed by probe name)"
+            )
+            return
+
+        valid_keys = {'status', 'headers', 'body', 'response_time'}
+        unknown_keys = set(validation.keys()) - valid_keys
+        if unknown_keys:
+            self.warnings.append(
+                f"Probe {probe_index} '{probe_name}': unknown validation key(s): "
+                f"{', '.join(sorted(unknown_keys))} — valid keys are: {', '.join(sorted(valid_keys))}"
+            )
+
+        if 'status' in validation:
+            status = validation['status']
+            if not isinstance(status, int) or not (100 <= status <= 599):
+                self.errors.append(
+                    f"Probe {probe_index} '{probe_name}': validation.status must be an HTTP status "
+                    f"code (100-599), got {status!r}"
+                )
+
+        if 'response_time' in validation:
+            rt = validation['response_time']
+            if not isinstance(rt, (int, float)) or rt <= 0:
+                self.errors.append(
+                    f"Probe {probe_index} '{probe_name}': validation.response_time must be a "
+                    f"positive number (milliseconds), got {rt!r}"
+                )
+
+        if 'body' in validation:
+            body = validation['body']
+            if not isinstance(body, dict):
+                self.errors.append(
+                    f"Probe {probe_index} '{probe_name}': validation.body must be an object"
+                )
+            else:
+                valid_body_keys = {'present', 'absent', 'equals', 'matches', 'type', 'contains', 'range', 'length', 'ignore'}
+                unknown_body_keys = set(body.keys()) - valid_body_keys
+                if unknown_body_keys:
+                    self.warnings.append(
+                        f"Probe {probe_index} '{probe_name}': unknown validation.body key(s): "
+                        f"{', '.join(sorted(unknown_body_keys))}"
+                    )
+
+        if 'headers' in validation:
+            headers = validation['headers']
+            if not isinstance(headers, dict):
+                self.errors.append(
+                    f"Probe {probe_index} '{probe_name}': validation.headers must be an object"
+                )
+
     def _extract_vars_from_value(self, value: Any) -> None:
         """Recursively extract variables from any value."""
         if isinstance(value, str):
@@ -224,6 +292,8 @@ class ConfigValidator:
 
     def _is_variable_defined_in_all_executions(self, var_name: str) -> bool:
         """Check if a variable is defined with a concrete value in all executions."""
+        if not self.variables_defined:
+            return False  # no executions block — cannot be defined there
         return all(var_name in vars_set for vars_set in self.variables_defined.values())
     
     def _is_variable_defined_in_any_execution(self, var_name: str) -> bool:

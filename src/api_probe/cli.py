@@ -97,6 +97,7 @@ def validate_command(config_file: str) -> int:
             print(file=sys.stderr)
         
         # Try parsing
+        parse_ok = True
         print("Parsing configuration...", file=sys.stderr)
         try:
             parser = ConfigParser()
@@ -110,11 +111,11 @@ def validate_command(config_file: str) -> int:
         except Exception as e:
             print(f"✗ Parse error: {e}", file=sys.stderr)
             print(file=sys.stderr)
-            return 1
+            parse_ok = False
         
         # Summary
         print("=" * 60, file=sys.stderr)
-        if is_valid:
+        if is_valid and parse_ok:
             print("✅ Configuration is valid!", file=sys.stderr)
             return 0
         else:
@@ -173,6 +174,11 @@ def run_command(config_file: str) -> int:
         
     except FileNotFoundError:
         print(f"Error: Config file not found: {config_file}", file=sys.stderr)
+        return 2
+    except (ValueError, KeyError) as e:
+        # Config/parse errors — clean message, no traceback
+        print(f"Error: {e}", file=sys.stderr)
+        print(f"Run 'api-probe validate {config_file}' for details", file=sys.stderr)
         return 2
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
