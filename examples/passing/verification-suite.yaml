@@ -39,6 +39,9 @@ probes:
         - name: "Parallel A - Delay 1 sec"
           type: rest
           endpoint: "https://httpbin.org/delay/1"
+          retry:
+            max_attempts: 3
+            delay: 2
           validation:
             status: 200
           output:
@@ -47,6 +50,9 @@ probes:
         - name: "Parallel B - Delay 1 sec"
           type: rest
           endpoint: "https://httpbin.org/delay/1"
+          retry:
+            max_attempts: 3
+            delay: 2
           validation:
             status: 200
           output:
@@ -55,6 +61,9 @@ probes:
         - name: "Parallel C - Delay 1 sec"
           type: rest
           endpoint: "https://httpbin.org/delay/1"
+          retry:
+            max_attempts: 3
+            delay: 2
           validation:
             status: 200
           output:

@@ -13,7 +13,7 @@
 ✅ Output Variable Capture with expressions (len, has, empty)  
 ✅ Conditional Probe Execution (ignore field with expressions)  
 ✅ Conditional Validation (skip headers/body based on response)  
-✅ Parallel Group Execution  
+✅ Parallel Group Execution (flat and staged with isolated variable scopes)  
 ✅ Include Directive (!include) for external files  
 ✅ Rich Validations (status, headers, body)  
 ✅ Timeout, Retry, Debug support  
@@ -171,14 +171,17 @@ See [SCHEMA_SPECIFICATION.md](docs/SCHEMA_SPECIFICATION.md#expression-evaluation
 
 ## Parallel Groups
 
-Run probes in parallel for faster execution:
+Groups support two modes: **flat** (all probes in parallel) and **staged** (stages in parallel, probes within each stage sequential).
+
+### Flat Group
+
+All probes run at the same time:
 
 ```yaml
 probes:
   - name: "Sequential Test"
     endpoint: "https://api.example.com/test"
   
-  # All probes in group run in parallel
   - group:
       probes:
         - name: "Parallel Test 1"
@@ -188,6 +191,42 @@ probes:
         - name: "Parallel Test 3"
           endpoint: "https://api.example.com/delay/2"
   # Group completes in ~2 seconds instead of 6 seconds
+```
+
+### Staged Group
+
+Stages run in parallel, but probes within each stage run sequentially. Each stage has an **isolated variable scope** — output captured in one stage does not leak to sibling stages:
+
+```yaml
+probes:
+  - group:
+      name: "Multi-User Auth Flow"
+      stages:
+        - name: "User A"
+          probes:
+            - name: "Auth - User A"       # runs first
+              type: rest
+              endpoint: "${AUTH_URL}"
+              output:
+                TOKEN_A: "data.token"
+            - name: "API Call - User A"   # runs after Auth - User A
+              type: graphql               # skipped if TOKEN_A not set
+              endpoint: "${BASE_URL}/graphql"
+              headers:
+                Authorization: "Bearer ${TOKEN_A}"
+
+        - name: "User B"                  # runs in parallel with User A
+          probes:
+            - name: "Auth - User B"
+              type: rest
+              endpoint: "${AUTH_URL}"
+              output:
+                TOKEN_B: "data.token"     # isolated — not visible in User A stage
+            - name: "API Call - User B"
+              type: graphql
+              endpoint: "${BASE_URL}/graphql"
+              headers:
+                Authorization: "Bearer ${TOKEN_B}"
 ```
 
 See [examples/passing/groups-parallel.yaml](examples/passing/groups-parallel.yaml) for details.
@@ -304,6 +343,16 @@ See [GETTING_STARTED.md](docs/GETTING_STARTED.md) for details.
 **Status:** Production Ready
 
 ## Version History
+
+- **v2.7.0**
+  - Added staged groups (`stages:`) — stages run in parallel, probes within each stage run sequentially
+  - Each stage has an isolated variable scope (output does not leak between stages)
+  - Retry and output capture warnings now printed atomically with their probe (no interleaving)
+  - Output capture failure leaves variable unset — downstream probes are skipped rather than running with `"None"`
+  - All-skipped runs now treated as failure for CI safety
+  - Final report shows per-run probe counts in summary
+  - Final report shows correct validation state (`Passed`, `Passed (no validation)`, `Passed (validation skipped)`)
+  - Fixed in-group live output — removed duplicate probe name from result line
 
 - **v2.6.0**
   - Added `verify` field for per-probe SSL/TLS certificate validation skip

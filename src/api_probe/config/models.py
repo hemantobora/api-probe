@@ -35,11 +35,30 @@ class Probe:
 
 
 @dataclass
-class Group:
-    """Group of probes that execute in parallel."""
+class Stage:
+    """A stage within a group — probes run sequentially, stage runs in parallel with siblings."""
     probes: List[Probe] = field(default_factory=list)
+    name: Optional[str] = None  # Optional stage name (auto-generated if not provided)
+
+
+@dataclass
+class Group:
+    """Group of probes/stages.
+
+    Two mutually exclusive modes:
+      probes: List[Probe]  — all probes run in parallel (classic flat group)
+      stages: List[Stage]  — stages run in parallel, probes within each stage run sequentially
+                             each stage gets an isolated variable scope (output does not leak)
+    """
+    probes: List[Probe] = field(default_factory=list)
+    stages: List[Stage] = field(default_factory=list)
     name: Optional[str] = None  # Optional group name
     ignore: Optional[Union[bool, str]] = None  # Skip entire group if true or "${VAR}" evaluates to true
+
+    @property
+    def is_staged(self) -> bool:
+        """True if this group uses stages rather than flat probes."""
+        return len(self.stages) > 0
 
 
 @dataclass

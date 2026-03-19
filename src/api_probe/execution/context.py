@@ -65,3 +65,21 @@ class ExecutionContext:
         """
         with self._lock:
             return name in self.variables
+
+    def fork(self) -> 'ExecutionContext':
+        """Create an isolated child context inheriting current variables.
+
+        Used by staged groups so each stage starts with the parent's variables
+        but any output captured during the stage stays local to that stage —
+        it does not leak back to the parent or to sibling stages.
+
+        Returns:
+            New ExecutionContext with a snapshot copy of current variables
+        """
+        with self._lock:
+            snapshot = self.variables.copy()
+        child = ExecutionContext(snapshot, validation_overrides=self.validation_overrides)
+        # Carry execution name through so live output suffix is correct
+        if hasattr(self, 'execution_name'):
+            child.execution_name = self.execution_name
+        return child

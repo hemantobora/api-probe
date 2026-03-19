@@ -401,25 +401,90 @@ verify: true     # Explicit (same as default)
 
 ## Group Definition
 
-Groups enable parallel execution of probes using a thread pool.
+Groups enable parallel execution using a thread pool. Two mutually exclusive modes are supported: **flat** (classic) and **staged**.
 
-### Schema
+### Flat Group Schema
 
 ```yaml
 - group:
     name: string                        # Optional: auto-generated if not provided
     ignore: boolean | integer | string  # Optional: skip entire group
-    probes:                             # REQUIRED
+    probes:                             # REQUIRED (flat mode)
       - <probe>
       - <probe>
 ```
 
-### Behavior
+### Staged Group Schema
 
-- All probes in a group execute in parallel
+```yaml
+- group:
+    name: string                        # Optional: auto-generated if not provided
+    ignore: boolean | integer | string  # Optional: skip entire group
+    stages:                             # REQUIRED (staged mode)
+      - name: string                    # Optional: auto-generated as "Stage N" if not provided
+        probes:                         # REQUIRED
+          - <probe>
+          - <probe>
+      - name: string
+        probes:
+          - <probe>
+          - <probe>
+```
+
+### Flat Mode Behavior
+
+- All probes in the group execute in parallel
+- All probes share the same execution context (output variables are visible to all)
 - Results maintain YAML declaration order
 - The next item (probe or group) waits for all group probes to complete
 - If 3 probes each take 2 seconds: sequential = 6s, parallel group = ~2s
+
+### Staged Mode Behavior
+
+- All stages execute in parallel with each other
+- Probes within each stage execute sequentially
+- Each stage gets an **isolated variable scope** — a snapshot of the parent context at group entry
+- Output captured by a probe in Stage 1 is available to subsequent probes in Stage 1 only — it does not leak to Stage 2 or back to the parent
+- If a probe's referenced variable is not set in its stage context, it is skipped (same behavior as top-level probes)
+- The group finishes when all stages complete
+- Results are reported flat, in stage declaration order, then probe declaration order within each stage
+
+### Mutually Exclusive
+
+A group must have either `probes` or `stages` — not both. The validator will report an error if both are present.
+
+### Staged Group Example
+
+```yaml
+- group:
+    name: "Auth + Product Flow"
+    stages:
+      - name: "User A Flow"
+        probes:
+          - name: "Auth - User A"         # runs first in this stage
+            type: rest
+            endpoint: "${AUTH_URL}"
+            output:
+              TOKEN_A: "data.token"
+          - name: "Product - User A"      # runs after Auth - User A
+            type: graphql                 # skipped if TOKEN_A not set
+            endpoint: "${API_URL}/graphql"
+            headers:
+              Authorization: "Bearer ${TOKEN_A}"
+
+      - name: "User B Flow"               # runs in parallel with User A Flow
+        probes:
+          - name: "Auth - User B"
+            type: rest
+            endpoint: "${AUTH_URL}"
+            output:
+              TOKEN_B: "data.token"       # TOKEN_B is isolated to this stage
+          - name: "Product - User B"      # TOKEN_A is NOT visible here
+            type: graphql
+            endpoint: "${API_URL}/graphql"
+            headers:
+              Authorization: "Bearer ${TOKEN_B}"
+```
 
 ---
 

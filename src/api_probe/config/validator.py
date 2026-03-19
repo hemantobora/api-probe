@@ -71,7 +71,7 @@ class ConfigValidator:
                         if isinstance(value, str):
                             self._extract_vars_from_string(value)
         
-        # Extract from probes
+        # Extract from probes (walks recursively into groups and stages)
         self._extract_vars_from_value(config_dict.get('probes', []))
         
         return self.variables_found
@@ -105,23 +105,62 @@ class ConfigValidator:
                 self._validate_probe(item, i+1, seen_names)
     
     def _validate_group(self, group: Dict, index: int, seen_names: Dict[str, int] = None) -> None:
-        """Validate a group."""
+        """Validate a group — supports both 'probes' (flat) and 'stages' modes."""
         if seen_names is None:
             seen_names = {}
 
-        if 'probes' not in group:
-            self.errors.append(f"Group {index}: missing required 'probes' field")
+        has_probes = 'probes' in group
+        has_stages = 'stages' in group
+
+        if has_probes and has_stages:
+            name = group.get('name', f'group {index}')
+            self.errors.append(
+                f"Group {index} '{name}': cannot have both 'probes' and 'stages' — "
+                f"use 'probes' for a flat parallel group or 'stages' for parallel stages"
+            )
             return
 
-        if not isinstance(group['probes'], list):
-            self.errors.append(f"Group {index}: 'probes' must be an array")
+        if not has_probes and not has_stages:
+            self.errors.append(f"Group {index}: must have either 'probes' or 'stages' field")
             return
 
-        if len(group['probes']) == 0:
-            self.warnings.append(f"Group {index}: 'probes' array is empty")
+        if has_stages:
+            stages = group['stages']
+            if not isinstance(stages, list):
+                self.errors.append(f"Group {index}: 'stages' must be an array")
+                return
+            if len(stages) == 0:
+                self.warnings.append(f"Group {index}: 'stages' array is empty")
+            for j, stage in enumerate(stages):
+                self._validate_stage(stage, index, j + 1, seen_names)
+        else:
+            if not isinstance(group['probes'], list):
+                self.errors.append(f"Group {index}: 'probes' must be an array")
+                return
+            if len(group['probes']) == 0:
+                self.warnings.append(f"Group {index}: 'probes' array is empty")
+            for j, probe in enumerate(group['probes']):
+                self._validate_probe(probe, f"{index}.{j+1}", seen_names)
 
-        for j, probe in enumerate(group['probes']):
-            self._validate_probe(probe, f"{index}.{j+1}", seen_names)
+    def _validate_stage(self, stage: Dict, group_index: int, stage_index: int, seen_names: Dict[str, int]) -> None:
+        """Validate a single stage within a staged group."""
+        if not isinstance(stage, dict):
+            self.errors.append(f"Group {group_index}, Stage {stage_index}: must be an object")
+            return
+
+        if 'probes' not in stage:
+            self.errors.append(f"Group {group_index}, Stage {stage_index}: missing required 'probes' field")
+            return
+
+        if not isinstance(stage['probes'], list):
+            self.errors.append(f"Group {group_index}, Stage {stage_index}: 'probes' must be an array")
+            return
+
+        if len(stage['probes']) == 0:
+            self.warnings.append(f"Group {group_index}, Stage {stage_index}: 'probes' array is empty")
+
+        for k, probe in enumerate(stage['probes']):
+            self._validate_probe(probe, f"{group_index}.s{stage_index}.{k+1}", seen_names)
     
     def _validate_probe(self, probe: Dict, index: Any, seen_names: Dict[str, int] = None) -> None:
         """Validate a single probe."""

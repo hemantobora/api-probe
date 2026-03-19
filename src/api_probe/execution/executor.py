@@ -12,7 +12,7 @@ from .results import ProbeResult, RunResult, ExecutionResult
 from .variables import VariableSubstitutor, get_env_variables
 from .name_generator import generate_name
 from .expression import ExpressionEvaluator
-from ..config.models import Config, Probe, Group
+from ..config.models import Config, Probe, Group, Stage
 from ..http.builder import RequestBuilder
 from ..http.client import HTTPClient
 from ..validation.engine import ValidationEngine
@@ -253,20 +253,36 @@ class ProbeExecutor:
         context: ExecutionContext,
         spinner: _Spinner,
     ) -> List[ProbeResult]:
-        """Execute probes in a group in parallel with live progress.
+        """Execute a group in parallel with live progress.
 
-        The group header is printed immediately. Each probe prints its
-        start + result atomically as it completes. Results are returned
-        in original probe order.
+        Flat mode  (group.probes):  all probes run in parallel.
+        Staged mode (group.stages): stages run in parallel, each stage's
+                                    probes run sequentially in an isolated
+                                    forked context so output does not leak.
 
         Args:
-            group: Group of probes
+            group: Group definition
             context: Execution context
+            spinner: Spinner instance
 
         Returns:
-            List of probe results in original order
+            List of probe results in declaration order
         """
-        group_name = group.name if group.name else "Parallel Group"
+        group_name = group.name or "Parallel Group"
+
+        if group.is_staged:
+            return self._execute_group_staged(group, group_name, context, spinner)
+        else:
+            return self._execute_group_flat(group, group_name, context, spinner)
+
+    def _execute_group_flat(
+        self,
+        group: Group,
+        group_name: str,
+        context: ExecutionContext,
+        spinner: _Spinner,
+    ) -> List[ProbeResult]:
+        """Classic flat parallel group — all probes run concurrently."""
         _println(f"  [{group_name} - {len(group.probes)} probe(s)]:")
 
         probes_to_run = [
@@ -290,6 +306,75 @@ class ProbeExecutor:
                 f.result()
 
         return [results[i] for i in range(len(probes_to_run))]
+
+    def _execute_group_staged(
+        self,
+        group: Group,
+        group_name: str,
+        context: ExecutionContext,
+        spinner: _Spinner,
+    ) -> List[ProbeResult]:
+        """Staged parallel group — stages run concurrently, probes within each stage sequentially.
+
+        Each stage gets a forked context (snapshot of parent variables at group entry).
+        Output captured inside a stage stays local to that stage and does not leak
+        to sibling stages or back to the parent context.
+        """
+        total_probes = sum(len(s.probes) for s in group.stages)
+        _println(f"  [{group_name} - {len(group.stages)} stage(s), {total_probes} probe(s)]:")
+
+        all_results: Dict[int, List[ProbeResult]] = {}
+        lock = threading.Lock()
+
+        def run_stage(stage_idx: int, stage: Stage):
+            stage_results = self._execute_stage(stage, stage_idx, context, spinner)
+            with lock:
+                all_results[stage_idx] = stage_results
+
+        with ThreadPoolExecutor(max_workers=len(group.stages)) as pool:
+            futures = {pool.submit(run_stage, i, s): i for i, s in enumerate(group.stages)}
+            for f in as_completed(futures):
+                f.result()
+
+        # Return results in stage declaration order, probes within each stage in order
+        combined = []
+        for i in range(len(group.stages)):
+            combined.extend(all_results[i])
+        return combined
+
+    def _execute_stage(
+        self,
+        stage: Stage,
+        stage_idx: int,
+        parent_context: ExecutionContext,
+        spinner: _Spinner,
+    ) -> List[ProbeResult]:
+        """Execute probes in a stage sequentially in an isolated forked context.
+
+        The stage forks the parent context at entry — it inherits all variables
+        visible at that point but any output captured here stays local.
+
+        Args:
+            stage: Stage definition
+            stage_idx: 0-based index (for display)
+            parent_context: Parent execution context to fork from
+            spinner: Spinner instance
+
+        Returns:
+            List of probe results in declaration order
+        """
+        stage_context = parent_context.fork()
+        stage_name = stage.name or f"Stage {stage_idx + 1}"
+        _println(f"    [{stage_name} - {len(stage.probes)} probe(s)]:")
+
+        results = []
+        for probe in stage.probes:
+            if self._should_ignore(probe, stage_context):
+                continue
+            result = self._execute_probe(probe, stage_context, in_group=True, spinner=spinner)
+            results.append(result)
+
+        return results
 
     # ------------------------------------------------------------------
     # Single probe execution
@@ -456,13 +541,16 @@ class ProbeExecutor:
     # ------------------------------------------------------------------
 
     def _count_probes(self, config: Config) -> int:
-        """Count total probes across all top-level items (including group members)."""
+        """Count total probes across all top-level items (including group and stage members)."""
         total = 0
         for item in config.probes:
             if isinstance(item, Probe):
                 total += 1
             elif isinstance(item, Group):
-                total += len(item.probes)
+                if item.is_staged:
+                    total += sum(len(s.probes) for s in item.stages)
+                else:
+                    total += len(item.probes)
         return total
 
     def _should_ignore(self, item: Union[Probe, Group], context: ExecutionContext) -> bool:

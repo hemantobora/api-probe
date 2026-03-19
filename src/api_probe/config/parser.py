@@ -2,7 +2,7 @@
 
 from typing import Any, Dict
 
-from .models import Config, Probe, Group, Validation, Execution
+from .models import Config, Probe, Group, Stage, Validation, Execution
 
 
 class ConfigParser:
@@ -115,27 +115,70 @@ class ConfigParser:
     
     def _parse_group(self, group_dict: Dict[str, Any]) -> Group:
         """Parse group definition.
-        
+
+        Supports two mutually exclusive modes:
+          - 'probes' key: flat parallel group (classic)
+          - 'stages' key: parallel stages, each with sequential probes
+
         Args:
             group_dict: Group dictionary
-            
+
         Returns:
             Group object
+
+        Raises:
+            ValueError: If both 'probes' and 'stages' are present, or neither
         """
         from ..execution.name_generator import generate_name
-        
-        probes = []
-        for probe_dict in group_dict.get('probes', []):
-            probes.append(self._parse_probe(probe_dict))
-        
-        # Get name or generate one
-        name = group_dict.get('name')
-        if not name:
-            name = generate_name()
-        
+
+        has_probes = 'probes' in group_dict
+        has_stages = 'stages' in group_dict
+
+        if has_probes and has_stages:
+            name = group_dict.get('name', 'unnamed')
+            raise ValueError(
+                f"Group '{name}': cannot have both 'probes' and 'stages' — "
+                f"use 'probes' for a flat parallel group or 'stages' for parallel stages "
+                f"with sequential probes within each stage"
+            )
+
+        name = group_dict.get('name') or generate_name()
         ignore = group_dict.get('ignore')
-        
-        return Group(probes=probes, name=name, ignore=ignore)
+
+        if has_stages:
+            stages = []
+            for i, stage_dict in enumerate(group_dict['stages']):
+                stages.append(self._parse_stage(stage_dict, i + 1))
+            return Group(stages=stages, name=name, ignore=ignore)
+        else:
+            probes = [self._parse_probe(p) for p in group_dict.get('probes', [])]
+            return Group(probes=probes, name=name, ignore=ignore)
+
+    def _parse_stage(self, stage_dict: Dict[str, Any], index: int) -> Stage:
+        """Parse a stage definition within a staged group.
+
+        Args:
+            stage_dict: Stage dictionary with optional 'name' and required 'probes'
+            index: 1-based position for error messages
+
+        Returns:
+            Stage object
+
+        Raises:
+            ValueError: If stage is missing 'probes'
+        """
+        from ..execution.name_generator import generate_name
+
+        if not isinstance(stage_dict, dict):
+            raise ValueError(f"Stage {index}: must be an object")
+
+        if 'probes' not in stage_dict:
+            raise ValueError(f"Stage {index}: missing required 'probes' field")
+
+        probes = [self._parse_probe(p) for p in stage_dict['probes']]
+        name = stage_dict.get('name') or f"Stage {index}"
+
+        return Stage(probes=probes, name=name)
     
     def _parse_validation(self, validation_dict: Any) -> Validation:
         """Parse validation specification.
