@@ -331,15 +331,20 @@ class ProbeExecutor:
             with lock:
                 all_results[stage_idx] = stage_results
 
-        with ThreadPoolExecutor(max_workers=len(group.stages)) as pool:
-            futures = {pool.submit(run_stage, i, s): i for i, s in enumerate(group.stages)}
+        stages_to_run = [
+            (i, s) for i, s in enumerate(group.stages)
+            if not self._should_ignore(s, context)
+        ]
+
+        with ThreadPoolExecutor(max_workers=max(len(stages_to_run), 1)) as pool:
+            futures = {pool.submit(run_stage, i, s): i for i, s in stages_to_run}
             for f in as_completed(futures):
                 f.result()
 
         # Return results in stage declaration order, probes within each stage in order
         combined = []
         for i in range(len(group.stages)):
-            combined.extend(all_results[i])
+            combined.extend(all_results.get(i, []))  # ignored stages contribute no results
         return combined
 
     def _execute_stage(

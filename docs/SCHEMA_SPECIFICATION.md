@@ -422,10 +422,12 @@ Groups enable parallel execution using a thread pool. Two mutually exclusive mod
     ignore: boolean | integer | string  # Optional: skip entire group
     stages:                             # REQUIRED (staged mode)
       - name: string                    # Optional: auto-generated as "Stage N" if not provided
+        ignore: boolean | integer | string  # Optional: skip entire stage
         probes:                         # REQUIRED
           - <probe>
           - <probe>
       - name: string
+        ignore: boolean | integer | string
         probes:
           - <probe>
           - <probe>
@@ -448,6 +450,18 @@ Groups enable parallel execution using a thread pool. Two mutually exclusive mod
 - If a probe's referenced variable is not set in its stage context, it is skipped (same behavior as top-level probes)
 - The group finishes when all stages complete
 - Results are reported flat, in stage declaration order, then probe declaration order within each stage
+
+### Ignore Hierarchy
+
+`ignore` is supported at three levels, each strictly containing the level below. A decision made at a higher level cannot be overridden by a lower level:
+
+| Level | Effect |
+|-------|--------|
+| `group.ignore` | Entire group skipped — no stages or probes run |
+| `stage.ignore` | That stage skipped — its probes do not run; sibling stages are unaffected |
+| `probe.ignore` | That probe skipped — sibling probes in the same stage are unaffected |
+
+All three levels accept the same values: `boolean`, `integer` (`0`/`1`), `"${VAR}"`, or an expression string.
 
 ### Mutually Exclusive
 

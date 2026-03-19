@@ -39,6 +39,7 @@ class Stage:
     """A stage within a group — probes run sequentially, stage runs in parallel with siblings."""
     probes: List[Probe] = field(default_factory=list)
     name: Optional[str] = None  # Optional stage name (auto-generated if not provided)
+    ignore: Optional[Union[bool, str]] = None  # Skip entire stage if true or "${VAR}" evaluates to true
 
 
 @dataclass

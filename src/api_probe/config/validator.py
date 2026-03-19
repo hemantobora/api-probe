@@ -159,6 +159,12 @@ class ConfigValidator:
         if len(stage['probes']) == 0:
             self.warnings.append(f"Group {group_index}, Stage {stage_index}: 'probes' array is empty")
 
+        if 'ignore' in stage and not isinstance(stage['ignore'], (bool, int, str)):
+            self.warnings.append(
+                f"Group {group_index}, Stage {stage_index}: 'ignore' should be a boolean, "
+                f"integer, or string expression, got {type(stage['ignore']).__name__!r}"
+            )
+
         for k, probe in enumerate(stage['probes']):
             self._validate_probe(probe, f"{group_index}.s{stage_index}.{k+1}", seen_names)
     

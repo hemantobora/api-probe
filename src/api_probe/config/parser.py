@@ -177,8 +177,9 @@ class ConfigParser:
 
         probes = [self._parse_probe(p) for p in stage_dict['probes']]
         name = stage_dict.get('name') or f"Stage {index}"
+        ignore = stage_dict.get('ignore')
 
-        return Stage(probes=probes, name=name)
+        return Stage(probes=probes, name=name, ignore=ignore)
     
     def _parse_validation(self, validation_dict: Any) -> Validation:
         """Parse validation specification.
