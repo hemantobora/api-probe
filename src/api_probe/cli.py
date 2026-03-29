@@ -3,6 +3,7 @@
 import sys
 import os
 import warnings
+import yaml
 
 # Suppress urllib3 SSL warnings (important for CI/CD)
 warnings.filterwarnings('ignore', message='.*OpenSSL.*')
@@ -125,10 +126,14 @@ def validate_command(config_file: str) -> int:
     except FileNotFoundError:
         print(f"Error: Config file not found: {config_file}", file=sys.stderr)
         return 2
+    except yaml.YAMLError as e:
+        print(f"Error: YAML parse error in {config_file}:", file=sys.stderr)
+        print(str(e), file=sys.stderr)
+        print(file=sys.stderr)
+        print("Tip: Common causes — tabs instead of spaces, invalid escape sequences (use single quotes for regex patterns)", file=sys.stderr)
+        return 2
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
         return 2
 
 def count_probes(config: Config) -> int:
@@ -175,6 +180,12 @@ def run_command(config_file: str) -> int:
     except FileNotFoundError:
         print(f"Error: Config file not found: {config_file}", file=sys.stderr)
         return 2
+    except yaml.YAMLError as e:
+        print(f"Error: YAML parse error in {config_file}:", file=sys.stderr)
+        print(str(e), file=sys.stderr)
+        print(file=sys.stderr)
+        print("Tip: Common causes — tabs instead of spaces, invalid escape sequences (use single quotes for regex patterns)", file=sys.stderr)
+        return 2
     except (ValueError, KeyError) as e:
         # Config/parse errors — clean message, no traceback
         print(f"Error: {e}", file=sys.stderr)
@@ -182,8 +193,6 @@ def run_command(config_file: str) -> int:
         return 2
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
         return 2
 
 
