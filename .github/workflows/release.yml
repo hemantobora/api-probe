@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  update-homebrew-tap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compute version and sha256
+        id: meta
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          URL="https://github.com/${{ github.repository }}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz"
+          SHA=$(curl -sL "$URL" | shasum -a 256 | awk '{print $1}')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "url=$URL"         >> $GITHUB_OUTPUT
+          echo "sha256=$SHA"      >> $GITHUB_OUTPUT
+
+      - name: Update formula in homebrew-tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          git clone https://x-access-token:${TAP_TOKEN}@github.com/hemantobora/homebrew-tap.git tap
+          cd tap
+
+          sed -i 's|version ".*"|version "${{ steps.meta.outputs.version }}"|'   Formula/api-probe.rb
+          sed -i 's|url ".*"|url "${{ steps.meta.outputs.url }}"|'               Formula/api-probe.rb
+          sed -i 's|sha256 ".*"|sha256 "${{ steps.meta.outputs.sha256 }}"|'     Formula/api-probe.rb
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/api-probe.rb
+          git diff --staged --quiet || git commit -m "api-probe ${{ steps.meta.outputs.version }}"
+          git push
