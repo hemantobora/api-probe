@@ -1,4 +1,5 @@
 ---
+name: api-probe:sync
 description: Sync an existing probes.yaml with an updated API collection (Postman, Bruno, Insomnia, OpenAPI, HAR) — preserving all developer-written validation
 ---
 

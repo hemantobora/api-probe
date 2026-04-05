@@ -1,4 +1,5 @@
 ---
+name: api-probe:generate
 description: Generate api-probe YAML probe files by scanning the codebase or from a collection file (Postman, Bruno, Insomnia, OpenAPI, HAR, curl)
 ---
 
