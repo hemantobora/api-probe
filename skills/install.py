@@ -18,7 +18,7 @@ from pathlib import Path
 # On init, if the installed version differs, all files for that tool are
 # reinstalled automatically — no manual action required from the user.
 
-VERSION = "1.2.0"
+VERSION = "0.0.2"
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -60,10 +60,12 @@ def _select(question: str, options: list) -> str:
             sys.stdout.write(f"\033[{n}A")
         for i, (_, label) in enumerate(options):
             marker = f"{CYAN}❯{RESET}" if i == selected else " "
-            sys.stdout.write(f"\033[2K    {marker}  {label}\n")
+            sys.stdout.write(f"\033[2K\r    {marker}  {label}\n")
         sys.stdout.flush()
 
     print(f"\n  {BOLD}{question}{RESET}\n")
+    sys.stdout.write("\033[?25l")  # hide cursor
+    sys.stdout.flush()
     _draw(first=True)
 
     fd  = sys.stdin.fileno()
@@ -90,6 +92,8 @@ def _select(question: str, options: list) -> str:
                 sys.exit(0)
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        sys.stdout.write("\033[?25h")  # restore cursor
+        sys.stdout.flush()
 
     # Print the confirmed selection
     label = next(label for key, label in options if key == options[selected][0])
@@ -230,9 +234,107 @@ def install_tool(tool: str, manifest: dict) -> None:
         print(f"\n  Already up to date (v{VERSION}).")
 
 
+# ── Destroy ───────────────────────────────────────────────────────────────────
+
+def _cleanup_empty_dirs(start: Path) -> None:
+    """Walk up from start toward WORKSPACE, removing each directory if it is empty.
+    Stops as soon as a non-empty directory is encountered, or when WORKSPACE is reached.
+    Never removes the workspace root itself."""
+    d = start
+    while d != WORKSPACE and d != d.parent:
+        try:
+            d.rmdir()                                            # succeeds only when empty
+            _info(f"Removed empty dir  {d.relative_to(WORKSPACE)}")
+            d = d.parent
+        except OSError:
+            break                                                # not empty — stop walking up
+
+
+def destroy_tool(tool: str, manifest: dict) -> None:
+    """Remove exactly the files placed by install_tool, then clean up any directories
+    that became empty as a result. Directories that contain other files are left alone."""
+    dirs_to_check: list[Path] = []
+
+    for src, dest in TOOL_FILES[tool]:
+        if dest.exists():
+            dest.unlink()
+            _ok(f"Removed  {dest.relative_to(WORKSPACE)}")
+        # Collect unique parent dirs in order (innermost first)
+        if dest.parent not in dirs_to_check:
+            dirs_to_check.append(dest.parent)
+
+    # Walk up from each parent directory, removing empty ones
+    visited: set[Path] = set()
+    for d in dirs_to_check:
+        if d not in visited:
+            visited.add(d)
+            _cleanup_empty_dirs(d)
+
+    for key in [k for k in manifest if k.startswith(f"{tool}:")]:
+        del manifest[key]
+
+
+def destroy() -> None:
+    _header("api-probe destroy")
+
+    manifest = _load_manifest()
+
+    installed = [(t, l) for t, l in TOOLS if manifest.get(_version_key(t))]
+    if not installed:
+        _info("No api-probe skills are installed in this project.")
+        return
+
+    print("  The following will be removed:\n")
+    for tool, label in installed:
+        print(f"  {BOLD}{label}{RESET}")
+        for src, dest in TOOL_FILES[tool]:
+            if dest.exists():
+                print(f"    • {dest.relative_to(WORKSPACE)}")
+    print()
+
+    confirm = _select("Remove these files?", [
+        ("yes", "Yes, remove api-probe skills"),
+        ("no",  "No, cancel"),
+    ])
+    if confirm == "no":
+        _info("Cancelled.")
+        return
+
+    print()
+    for tool, _ in installed:
+        destroy_tool(tool, manifest)
+
+    _save_manifest(manifest)
+
+    api_probe_dir = WORKSPACE / ".api-probe"
+    if api_probe_dir.exists():
+        remaining = list(api_probe_dir.iterdir())
+        if remaining:
+            print()
+            confirm2 = _select(
+                f"Also remove .api-probe/ ({len(remaining)} file(s) inside)?",
+                [("yes", "Yes, remove .api-probe/"), ("no", "Keep .api-probe/")],
+            )
+            if confirm2 == "yes":
+                import shutil
+                shutil.rmtree(api_probe_dir)
+                _ok("Removed .api-probe/")
+        else:
+            api_probe_dir.rmdir()
+            _ok("Removed .api-probe/")
+
+    _header("Done")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "init"
+
+    if cmd == "destroy":
+        destroy()
+        return
+
     _header("api-probe skill installer")
 
     project_type = detect_project()

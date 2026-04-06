@@ -9,6 +9,7 @@ import yaml
 warnings.filterwarnings('ignore', message='.*OpenSSL.*')
 warnings.filterwarnings('ignore', category=Warning, module='urllib3')
 
+from . import __version__
 from .config.loader import load_config
 from .config.parser import ConfigParser
 from .config.validator import ConfigValidator
@@ -23,6 +24,7 @@ def print_usage():
   api-probe <config-file>              Run probes from config file
   api-probe validate <config-file>     Validate config and list variables
   api-probe --help                     Show this help message
+  api-probe -v, --version              Print version
 """, file=sys.stderr)
 
 
@@ -203,6 +205,10 @@ def main():
         sys.exit(2)
     
     # Handle commands
+    if sys.argv[1] in ['-v', '--version']:
+        print(f"api-probe {__version__}")
+        sys.exit(0)
+
     if sys.argv[1] in ['--help', '-h', 'help']:
         print_usage()
         sys.exit(0)
