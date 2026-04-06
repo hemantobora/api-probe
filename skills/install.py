@@ -9,7 +9,16 @@ Usage:
 import hashlib
 import json
 import sys
+import tty
+import termios
 from pathlib import Path
+
+# ── Version ───────────────────────────────────────────────────────────────────
+# Bump this whenever prompt/command files are updated.
+# On init, if the installed version differs, all files for that tool are
+# reinstalled automatically — no manual action required from the user.
+
+VERSION = "1.1.0"
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -37,24 +46,55 @@ def _header(text: str) -> None:
 def _ok(text: str)   -> None: print(f"  {GREEN}✓{RESET}  {text}")
 def _err(text: str)  -> None: print(f"  {RED}✗{RESET}  {text}")
 def _info(text: str) -> None: print(f"  {DIM}   {text}{RESET}")
+def _warn(text: str) -> None: print(f"  {YELLOW}!{RESET}  {text}")
 
 
-def _prompt(question: str, options: list) -> str:
-    """Present a numbered list and return the selected key. Single selection only."""
+def _select(question: str, options: list) -> str:
+    """Arrow key + Enter/Space to select. Returns the selected key."""
+    selected = 0
+    n = len(options)
+
+    def _draw(first: bool = False) -> None:
+        if not first:
+            # Move cursor back up to the first option line
+            sys.stdout.write(f"\033[{n}A")
+        for i, (_, label) in enumerate(options):
+            marker = f"{CYAN}❯{RESET}" if i == selected else " "
+            sys.stdout.write(f"\033[2K    {marker}  {label}\n")
+        sys.stdout.flush()
+
     print(f"\n  {BOLD}{question}{RESET}\n")
-    for i, (key, label) in enumerate(options, 1):
-        print(f"    {CYAN}{i}{RESET})  {label}")
-    print()
-    while True:
-        try:
-            raw = input(f"  {BOLD}>{RESET} Enter number: ").strip()
-            idx = int(raw) - 1
-            if 0 <= idx < len(options):
-                return options[idx][0]
-        except (ValueError, EOFError, KeyboardInterrupt):
-            print()
-            sys.exit(0)
-        print(f"  Please enter a number between 1 and {len(options)}.")
+    _draw(first=True)
+
+    fd  = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        while True:
+            ch = sys.stdin.read(1)
+            if ch == "\x1b":                    # ESC — start of arrow key sequence
+                ch = sys.stdin.read(1)
+                if ch == "[":
+                    ch = sys.stdin.read(1)
+                    if ch == "A":               # Up arrow
+                        selected = max(0, selected - 1)
+                        _draw()
+                    elif ch == "B":             # Down arrow
+                        selected = min(n - 1, selected + 1)
+                        _draw()
+            elif ch in ("\r", "\n", " "):       # Enter or Space — confirm
+                break
+            elif ch == "\x03":                  # Ctrl-C
+                termios.tcsetattr(fd, termios.TCSADRAIN, old)
+                print()
+                sys.exit(0)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    # Print the confirmed selection
+    label = next(label for key, label in options if key == options[selected][0])
+    print(f"\n  {DIM}Selected: {label}{RESET}\n")
+    return options[selected][0]
 
 
 # ── Project detection ─────────────────────────────────────────────────────────
@@ -115,9 +155,6 @@ def _save_manifest(manifest: dict) -> None:
 
 
 # ── Tool file definitions ─────────────────────────────────────────────────────
-#
-# Each entry is: (source_path, destination_path)
-# Files are owned entirely by api-probe — no section markers needed.
 
 TOOL_FILES = {
     "copilot": [
@@ -150,12 +187,19 @@ TOOLS = [
 
 # ── Installer ─────────────────────────────────────────────────────────────────
 
-def install_file(key: str, src: Path, dest: Path, manifest: dict) -> bool:
-    """Copy src to dest, skipping if content is unchanged."""
+def _version_key(tool: str) -> str:
+    return f"{tool}:version"
+
+
+def _needs_upgrade(tool: str, manifest: dict) -> bool:
+    return manifest.get(_version_key(tool)) != VERSION
+
+
+def install_file(key: str, src: Path, dest: Path, manifest: dict, force: bool = False) -> bool:
     new_content = src.read_text()
     checksum    = _sha256(new_content)
 
-    if dest.exists() and manifest.get(key) == checksum:
+    if not force and dest.exists() and manifest.get(key) == checksum:
         _info(f"no change   {dest.relative_to(WORKSPACE)}")
         return False
 
@@ -167,14 +211,23 @@ def install_file(key: str, src: Path, dest: Path, manifest: dict) -> bool:
 
 
 def install_tool(tool: str, manifest: dict) -> None:
-    changed = False
+    upgrade           = _needs_upgrade(tool, manifest)
+    installed_version = manifest.get(_version_key(tool))
 
+    if upgrade and installed_version:
+        _warn(f"Upgrading skills from v{installed_version} → v{VERSION}")
+    elif upgrade:
+        _info(f"Installing skills v{VERSION}")
+
+    changed = False
     for src, dest in TOOL_FILES[tool]:
         key = f"{tool}:{src.relative_to(SKILLS_DIR)}"
-        changed = changed | install_file(key, src, dest, manifest)
+        changed = changed | install_file(key, src, dest, manifest, force=upgrade)
 
-    if not changed:
-        print(f"\n  No changes detected.")
+    manifest[_version_key(tool)] = VERSION
+
+    if not changed and not upgrade:
+        print(f"\n  Already up to date (v{VERSION}).")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -185,10 +238,10 @@ def main():
     project_type = detect_project()
     _ok(f"Project detected: {BOLD}{project_type}{RESET}")
 
-    selected = _prompt("Which AI tool would you like to configure?", TOOLS)
+    selected = _select("Which AI tool would you like to configure?", TOOLS)
 
     manifest = _load_manifest()
-    print(f"\n  Installing ...\n")
+    print(f"  Installing ...\n")
     install_tool(selected, manifest)
 
     _save_manifest(manifest)
