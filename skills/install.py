@@ -18,7 +18,7 @@ from pathlib import Path
 # On init, if the installed version differs, all files for that tool are
 # reinstalled automatically — no manual action required from the user.
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -159,12 +159,12 @@ def _save_manifest(manifest: dict) -> None:
 TOOL_FILES = {
     "copilot": [
         (
-            SKILLS_DIR / "copilot" / "prompts" / "api-probe" / "generate.prompt.md",
-            WORKSPACE / ".github" / "prompts" / "api-probe" / "generate.prompt.md",
+            SKILLS_DIR / "copilot" / "prompts" / "api-probe-generate.prompt.md",
+            WORKSPACE / ".github" / "prompts" / "api-probe-generate.prompt.md",
         ),
         (
-            SKILLS_DIR / "copilot" / "prompts" / "api-probe" / "sync.prompt.md",
-            WORKSPACE / ".github" / "prompts" / "api-probe" / "sync.prompt.md",
+            SKILLS_DIR / "copilot" / "prompts" / "api-probe-sync.prompt.md",
+            WORKSPACE / ".github" / "prompts" / "api-probe-sync.prompt.md",
         ),
     ],
     "claude": [
