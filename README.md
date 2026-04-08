@@ -250,6 +250,87 @@ probes:
 
 See [examples/passing/include-directive.yaml](examples/passing/include-directive.yaml) for details.
 
+## AI-Assisted Probe Generation
+
+api-probe ships with AI skills for **Claude Code** and **GitHub Copilot** that turn natural language and existing API sources into ready-to-run probe files. The skills understand the full schema, handle auth detection, DAG ordering, `!include` externalisation, and per-probe validation — so you describe what you want and the AI does the rest.
+
+### Supported inputs
+
+Paste or reference any combination of:
+
+- curl commands
+- Collection files — Postman, Bruno, Insomnia, OpenAPI/Swagger
+- HAR files
+- A plain description of your endpoints
+
+The skill also scans your codebase directly (Express, FastAPI, Spring Boot, NestJS, Quarkus, Rails, Laravel, Go, .NET, and more) to extract routes, response shapes, and auth patterns without any file provided.
+
+### Install the skills
+
+Install via Homebrew, then run the `init` command from your project root:
+
+```bash
+brew install hemantobora/tap/api-probe
+api-probe init
+```
+
+The installer detects your project type and lets you pick which AI tool to configure — use arrow keys to select, then press Enter:
+
+```
+  Which AI tool would you like to configure?
+
+    ❯  GitHub Copilot
+       Claude Code
+```
+
+**GitHub Copilot** — installs two prompt files to `.github/prompts/`:
+
+```
+.github/prompts/api-probe-generate.prompt.md
+.github/prompts/api-probe-sync.prompt.md
+```
+
+Attach them in VS Code agent mode with `#api-probe-generate` or reference them via `@workspace`.
+
+**Claude Code** — installs two slash commands to `.claude/commands/api-probe/`:
+
+```
+.claude/commands/api-probe/generate.md   →  /api-probe:generate
+.claude/commands/api-probe/sync.md       →  /api-probe:sync
+```
+
+Use `/api-probe:generate` to create a new probe file, `/api-probe:sync` to keep an existing one in sync after API changes.
+
+### Upgrade
+
+Upgrade api-probe via Homebrew, then re-run `init` from your project root. If the bundled skills are newer than what is installed, all files for that tool are updated automatically:
+
+```bash
+brew upgrade hemantobora/tap/api-probe
+api-probe init
+```
+
+The installer tracks versions in `.api-probe/skills-manifest.json`.
+
+### Uninstall
+
+```bash
+api-probe destroy
+```
+
+Removes only the files placed by `init`. Empty parent directories (`.github/prompts/`, `.claude/commands/api-probe/`) are cleaned up. Directories with other content are left untouched.
+
+### Local development
+
+If you are working on the skills themselves, you can run the installer directly from the repository:
+
+```bash
+python3 skills/install.py        # init
+python3 skills/install.py destroy
+```
+
+---
+
 ## Documentation
 
 - **[GETTING_STARTED.md](docs/GETTING_STARTED.md)** - Installation and basic usage
@@ -257,7 +338,7 @@ See [examples/passing/include-directive.yaml](examples/passing/include-directive
 - **[DOCKER.md](docs/DOCKER.md)** - Container usage and CI/CD integration
 - **[XML_SOAP_GUIDE.md](docs/XML_SOAP_GUIDE.md)** - XPath expressions and SOAP testing
 - **[INCLUDE_DIRECTIVE.md](docs/INCLUDE_DIRECTIVE.md)** - YAML include directive usage
-- **[PROMPT.md](docs/PROMPT.md)** - Generate configs with AI
+- **[PROMPT.md](docs/PROMPT.md)** - Copy-paste prompt for any LLM (ChatGPT, etc.)
 
 ## Examples
 
@@ -324,7 +405,12 @@ See [DOCKER.md](docs/DOCKER.md) for more CI/CD examples.
 
 ## Installation
 
-### Docker (Recommended)
+### Homebrew (Recommended)
+```bash
+brew install hemantobora/tap/api-probe
+```
+
+### Docker
 ```bash
 docker build -t api-probe .
 docker run --rm api-probe --help
@@ -339,7 +425,7 @@ See [GETTING_STARTED.md](docs/GETTING_STARTED.md) for details.
 
 ## Status
 
-**Version:** 2.5.0  
+**Version:** 2.7.0  
 **Status:** Production Ready
 
 ## Version History

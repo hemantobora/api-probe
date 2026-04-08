@@ -8,6 +8,7 @@ Sync an existing probe file with an updated API collection, preserving all devel
 **Global rules:**
 - If the user says **stop**, **exit**, or **terminate** at any point, stop immediately. Do not write any changes.
 - If the user says **continue** or **resume** and you were waiting for a response, re-ask the same question — do not skip it.
+- Never ask the user to reply with numbers. Always present visual lists or checkbox tables and accept natural language responses.
 
 ---
 

@@ -11,6 +11,8 @@ Generate an api-probe YAML probe file for this project.
 - If the user says **stop**, **exit**, or **terminate** at any point, stop immediately. Do not generate any YAML. Acknowledge and exit.
 - If the user says **continue** or **resume** and the last thing you asked was a question, **re-ask that exact question** — do not assume it was answered or skip it.
 - Do not generate any YAML until Phase 3 is complete and the user has answered all relevant questions.
+- Do not make assumptions about API endpoints — always verify from the codebase or provided sources.
+- Never ask the user to reply with numbers. Always present visual lists or checkbox tables and accept natural language responses.
 
 ---
 
@@ -128,33 +130,38 @@ Identify the framework and find all routes:
 
 # Phase 3 — Questions
 
-Present a short summary (endpoint count, auth type, API type, any grouping opportunities), then ask the questions below **one at a time**, in order, skipping those that are not relevant.
+Present a short summary (endpoint count, auth type, API type, any grouping opportunities), then work through the questions below **one at a time**, in order.
 
-If the user already answered a question in their initial prompt, skip it.
-
-If the user says **continue** or **resume** without answering the current question, re-ask it.
+**Important rules for this phase:**
+- The Q1, Q2… labels below are internal sequencing only — never show them in your responses to the user.
+- Before asking any question, check whether the user already provided that information — in their initial prompt or earlier in the conversation. If yes, skip it silently.
+- Ask only one question per message. Wait for a response before continuing.
+- If the user says **continue** or **resume** without answering, re-ask the same question.
 
 ---
 
 ## Q1 — Endpoint selection
 *Ask if more than one endpoint was found.*
 
-Present all endpoints in a checkbox table with every row pre-checked, then ask what to remove:
+Show all endpoints in a ☑ checkbox table — all pre-checked. The checkboxes are visual indicators, not interactive. The user responds in plain text to describe what to remove:
 
 ```
-I found X endpoints — all selected by default:
+I found X endpoints — all included by default:
 
-| ☑ | Type        | Endpoint / Operation                              |
-|---|-------------|---------------------------------------------------|
-| ☑ | REST GET    | /orders/{id}                                      |
-| ☑ | REST POST   | /orders                                           |
-| ☑ | GraphQL     | createOrder mutation                              |
+| ☑ | Type        | Endpoint / Operation                  |
+|---|-------------|---------------------------------------|
+| ☑ | REST GET    | /orders/{id}                          |
+| ☑ | REST POST   | /orders                               |
+| ☑ | GraphQL     | createOrder mutation                  |
+| ☑ | GraphQL     | getProduct query                      |
 ...
 
-Any you'd like to leave out? Or shall I proceed with all of them?
+Any to leave out? Describe by name, category, or type — e.g. "skip the health check", "leave out GraphQL", "only the offers endpoints". Or say "all good" to proceed with everything.
 ```
 
-The user can reply naturally — "skip the GraphQL ones", "leave out the last two", "just keep the order endpoints", or "all good, proceed". Match their description to the rows and confirm which are included before continuing. Do not ask for numbered replies.
+When the user responds:
+- Resolve their description to specific rows — never ask them to confirm by number
+- Continue to Q2
 
 ---
 
@@ -205,55 +212,58 @@ If multiple: ask how many, what to name each, and their base URLs.
 
 ---
 
-## Q6 — Validation overrides per execution
-*Ask only if Q5 = multiple.*
+## Q6 — Validation review
+*Always ask — this is the most important question before generating.*
 
-> "Would you like different validation rules per execution? For example, stricter response time or additional field checks in production vs. staging."
+By this point you have analysed the codebase and/or collection. Present a concrete per-probe validation plan — what you intend to generate — and ask the user to confirm, adjust, or add to it. Do not ask an open-ended question. Show your work:
 
-If yes: for each execution, generate a separate `validations/[env].yaml` file and wire it in with `validations: !include validations/[env].yaml`. The override is a **total replacement per probe** — any probe listed in the file uses that spec instead of its inline `validation:`. Probes not listed fall back to their inline validation.
+```
+Here's the validation I plan to generate for each probe:
 
-```yaml
-executions:
-  - name: "Production"
-    vars:
-      - BASE_URL: "https://api.prod.example.com"
-    validations: !include validations/prod.yaml
+**GET /orders/{id}**
+- status: 200
+- body.present: id, status, items, total
+- body.absent: internalCost, debug (marked internal in code)
+- body.type: total → number, items → array
 
-  - name: "Staging"
-    vars:
-      - BASE_URL: "https://api.staging.example.com"
-    validations: !include validations/staging.yaml
+**POST /orders**
+- status: 201
+- body.present: id, status
+- body.equals: status → "pending"
+
+**createOrder (GraphQL)**
+- status: 200
+- body.present: data.createOrder.id, data.createOrder.status
+- body.absent: errors
+
+Anything to add, change, or correct? For example:
+- A field that should always be absent (sensitive/internal)
+- A known expected value for a specific field
+- A response time requirement for a particular probe
+- A field whose type you want asserted
 ```
 
-```yaml
-# validations/prod.yaml — strict
-"Get Order":
-  status: 200
-  response_time: 300
-  body:
-    present: ["id", "status", "items", "total"]
-    absent: ["debug", "internalCost"]
-    type:
-      total: number
-      items: array
-
-# validations/staging.yaml — relaxed
-"Get Order":
-  status: 200
-  body:
-    present: ["id", "status"]
-```
-
-Ask the user what differs between environments before generating the validation files.
+Wait for the user's response before generating. If they say "looks good" or "proceed", use the plan as-is.
 
 ---
 
-## Q7 — Probe-specific context
-*Ask once, openly.*
+## Q7 — Execution-specific validation differences
+*Ask only if Q5 = multiple executions.*
 
-> "Before I generate, is there anything specific about how individual probes should behave? For example: known expected values for a particular endpoint, fields that should never appear in a response, or specific response time requirements for certain probes."
+Based on Q6's validated plan, ask what — if anything — differs between executions:
 
-This is intentionally open-ended. The user may describe expectations for one probe, several, or none. Use whatever they provide to enrich per-probe validation. Do not ask for a single validation rule that covers all probes.
+```
+You have X executions: [list them]. Should the validation differ between them?
+
+For example:
+- Stricter response time in production
+- Additional field checks in one environment
+- Relaxed status codes in staging (e.g. 2xx instead of 200)
+
+Or are the same validation rules fine for all executions?
+```
+
+If differences exist: generate a separate `validations/[env].yaml` per execution and wire with `validations: !include validations/[env].yaml`. This is a **total replacement per probe** — probes not listed fall back to their inline `validation:`.
 
 ---
 
@@ -288,7 +298,7 @@ For every GraphQL query or mutation:
 - **Queries** → `validation.body.present` lists all expected `data.*` fields; `absent: ["errors"]`
 - **Mutations** → validate both the returned payload fields AND the absence of `errors`
 - **Use `body.type`** for known scalar types (`String`, `Int`, `Boolean`, etc.)
-- **Externalise the query** with `query: !include includes/[operation-name].graphql` — do not inline long queries
+- **Externalise the query** with `query: !include queries/[operation-name].graphql` — do not inline long queries
 
 After generating GraphQL probes, add this comment block in the YAML:
 
@@ -431,7 +441,7 @@ probes:
 ```yaml
 - name: "Search Products"
   type: graphql
-  query: !include includes/search-products.graphql
+  query: !include queries/search-products.graphql
   variables:
     category: "${CATEGORY}"
 ```
@@ -462,13 +472,13 @@ body:
 ```yaml
 retry:
   max_attempts: 3
-  delay: 2000
+  delay: 2        # seconds between retries
 ```
 Signals: async handlers, `/generate|export|report|process|batch` in path.
 
 **delay** — after probes triggering async work:
 ```yaml
-delay: 1000   # ms
+delay: 1    # seconds to wait before executing this probe
 ```
 
 ## Emit YAML
@@ -494,6 +504,7 @@ probes: api-probe/probes.yaml
 - [ ] Per-execution validation overrides use `validations: !include validations/[env].yaml`
 - [ ] Grouping applied only where it fits schema semantics
 - [ ] Dependency chains are flat sequential — never in a staged group
+- [ ] POST/PUT/PATCH probes with body include `Content-Type` header
 - [ ] `retry` / `delay` / `ignore` added where applicable
 - [ ] No duplicate probe names
 - [ ] `.api-probe/config.yaml` written with output path
