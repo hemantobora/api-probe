@@ -60,10 +60,17 @@ All subsequent steps operate on the single resolved path.
 
 ## Step 1 — Parse both inputs
 
-Parse the collection file (same format detection as `/api-probe:generate` Phase 2b).
+Parse the collection file (same format detection as the generate prompt Phase 2b).
 Parse the existing probe file at the resolved path.
 
-Note any probes that use `!include` for body or validation — these are flagged as `!include`-protected and their referenced fields will never be touched.
+Note any probes that use `!include` for body, validation, or variables — these are flagged as `!include`-protected and their referenced fields will never be touched.
+
+**If any existing probes are `type: graphql`** — also scan the project for a GraphQL schema:
+- Look for `schema.graphql`, `*.graphql` in `graphql/`, `src/graphql/`, `api/`, or any `schema/` directory
+- Also check for `schema.json` (introspection result)
+- If found, parse it to build an operation map: operation name → required variables (non-null `!` args) + return type non-null fields
+- If a probe uses `query: !include queries/[file].graphql` — read that file to extract the operation name and field selection for comparison
+- If no schema is found — note it and skip GraphQL schema diffing; only collection-level changes are detected
 
 ---
 
@@ -77,6 +84,21 @@ Note any probes that use `!include` for body or validation — these are flagged
 **Pass 2 — match remaining by (method, endpoint)**:
 - Normalise: `null` method = `"GET"`, `null` type = `"rest"`
 - Match found → treat as rename (update name from collection, preserve all user-owned fields)
+
+**Pass 3 — GraphQL schema diff** (only if schema was found in Step 1):
+
+For each matched GraphQL probe, compare against the parsed schema:
+
+| What to check | How to detect | Action |
+|---|---|---|
+| Required variable added (`Arg!` now non-null) | Arg present in schema with `!`, missing from probe `variables:` | Flag `updated` — add `# SYNC: new required variable [VAR_NAME] ([Type]!)` |
+| Required variable removed or renamed | Arg no longer in schema operation signature | Flag `updated` — add `# SYNC: variable [VAR_NAME] removed from schema` |
+| Variable type changed | Schema arg type differs from probe | Flag `updated` — add `# SYNC: variable [VAR_NAME] type changed to [NewType]` |
+| Non-null return field added to queried type | Schema has new `Field!` not in `!include` query file or inline query | Flag `updated` — add `# SYNC: schema added required field [field] — update your query/validation` |
+| Operation removed from schema | Query/mutation no longer exists | Classify as `removed` |
+| Query param added/removed (REST) | Endpoint URL or OpenAPI `parameters` changed | Flag `updated` via endpoint or headers diff |
+
+For `!include`-protected queries (`query: !include queries/[file].graphql`): read the `.graphql` file, extract field selection, diff against schema. Do not modify the `!include` reference — only add a `# SYNC:` comment describing what changed so the developer can update the file manually.
 
 Classify each probe: `added` | `updated` | `removed` | `unchanged`
 
@@ -113,7 +135,30 @@ Do **not** reorder existing probes.
 
 ---
 
-## Step 6 — Emit with inline comments
+## Step 6 — Update config.yaml (multi-file safe)
+
+When writing back to `.api-probe/config.yaml` after a sync:
+- Load the full existing config
+- Update only the entry for the file that was just synced
+- Preserve all other `probes:` entries exactly as-is — never rewrite the entire list
+
+```yaml
+# Before sync (two files):
+probes:
+  - api-probe/orders/probes.yaml
+  - api-probe/products/probes.yaml
+
+# After syncing only orders/probes.yaml — products reference must survive:
+probes:
+  - api-probe/orders/probes.yaml   # ← synced
+  - api-probe/products/probes.yaml # ← untouched
+```
+
+If the config uses a single-path string and the synced file matches — leave the format as a string (do not convert to a list).
+
+---
+
+## Step 7 — Emit with inline comments
 
 ```yaml
   # SYNC: endpoint updated from /user/${ID}
@@ -144,6 +189,16 @@ Do **not** reorder existing probes.
     validation:
       status: "2xx"
       # TODO: add body assertions after testing
+
+  # SYNC: new required variable customerId (String!) — add to variables block
+  # SYNC: schema added required field data.order.trackingId — update queries/create-order.graphql and validation
+  - name: "Create Order (GraphQL)"
+    type: graphql
+    endpoint: "${BASE_URL}/graphql"
+    query: !include queries/create-order.graphql   # ← update this file manually
+    variables:
+      # TODO: add customerId: "${CUSTOMER_ID}"
+    validation: !include validations/create-order.yaml  # ← preserved
 ```
 
 ---
@@ -151,7 +206,7 @@ Do **not** reorder existing probes.
 ## Check mode
 
 If user asks to **check for drift only** (no file changes):
-- Output a diff summary: probe name, what changed (endpoint, method, headers, body)
+- Output a diff summary: probe name, what changed (endpoint, method, headers, body, GraphQL variables, schema fields)
 - "✓ in sync" or "✗ X probes drifted — run /api-probe:sync to update"
 - Do not modify any files
 

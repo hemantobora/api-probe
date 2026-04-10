@@ -18,7 +18,7 @@ from pathlib import Path
 # On init, if the installed version differs, all files for that tool are
 # reinstalled automatically — no manual action required from the user.
 
-VERSION = "0.0.3"
+VERSION = "0.0.4"
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
