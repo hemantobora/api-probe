@@ -2,23 +2,28 @@
 """
 api-probe skills installer
 
+Installs api-probe Agent Skills (SKILL.md + bundled references/) into a
+project, in the format expected by each AI tool.
+
 Usage:
-    api-probe init
+    api-probe init      # detect project, choose a tool, install/upgrade skills
+    api-probe destroy   # remove api-probe skills (only the folders we own)
 """
 
 import hashlib
 import json
+import shutil
 import sys
 import tty
 import termios
 from pathlib import Path
 
 # ── Version ───────────────────────────────────────────────────────────────────
-# Bump this whenever prompt/command files are updated.
+# Bump this whenever any skill file is updated.
 # On init, if the installed version differs, all files for that tool are
 # reinstalled automatically — no manual action required from the user.
 
-VERSION = "0.0.4"
+VERSION = "0.1.0"
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -138,10 +143,10 @@ def detect_project() -> str:
     sys.exit(1)
 
 
-# ── Checksum ──────────────────────────────────────────────────────────────────
+# ── Checksum / manifest ─────────────────────────────────────────────────────--
 
-def _sha256(content: str) -> str:
-    return hashlib.sha256(content.encode()).hexdigest()
+def _sha256(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
 
 
 def _load_manifest() -> dict:
@@ -158,35 +163,44 @@ def _save_manifest(manifest: dict) -> None:
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2))
 
 
-# ── Tool file definitions ─────────────────────────────────────────────────────
+# ── Skill + tool definitions ────────────────────────────────────────────────--
+#
+# Canonical, tool-agnostic skill sources live next to this script, one folder
+# per skill (each containing SKILL.md plus optional references/, scripts/,
+# assets/). Every tool receives the *identical* skill folder, only the
+# destination root differs.
 
-TOOL_FILES = {
+SKILLS = ["api-probe-generate", "api-probe-sync"]
+
+# tool key -> (label, destination root for skill folders, relative to WORKSPACE)
+TOOLS = [
+    ("copilot", "GitHub Copilot", Path(".github") / "skills"),
+    ("claude",  "Claude Code",    Path(".claude") / "skills"),
+]
+
+TOOL_LABEL = {key: label for key, label, _ in TOOLS}
+TOOL_ROOT  = {key: root  for key, _, root in TOOLS}
+
+# Stale paths left behind by pre-0.1.0 installs (flat command / prompt files).
+# Removed on upgrade so users aren't left with both the old and new layout.
+LEGACY_PATHS = {
+    "claude":  [Path(".claude") / "commands" / "api-probe"],
     "copilot": [
-        (
-            SKILLS_DIR / "copilot" / "prompts" / "api-probe-generate.prompt.md",
-            WORKSPACE / ".github" / "prompts" / "api-probe-generate.prompt.md",
-        ),
-        (
-            SKILLS_DIR / "copilot" / "prompts" / "api-probe-sync.prompt.md",
-            WORKSPACE / ".github" / "prompts" / "api-probe-sync.prompt.md",
-        ),
-    ],
-    "claude": [
-        (
-            SKILLS_DIR / "claude" / "commands" / "generate.md",
-            WORKSPACE / ".claude" / "commands" / "api-probe" / "generate.md",
-        ),
-        (
-            SKILLS_DIR / "claude" / "commands" / "sync.md",
-            WORKSPACE / ".claude" / "commands" / "api-probe" / "sync.md",
-        ),
+        Path(".github") / "prompts" / "api-probe-generate.prompt.md",
+        Path(".github") / "prompts" / "api-probe-sync.prompt.md",
     ],
 }
 
-TOOLS = [
-    ("copilot", "GitHub Copilot"),
-    ("claude",  "Claude Code"),
-]
+
+def _iter_skill_files(skill: str):
+    """Yield (src_path, rel_path) for every file in a skill source folder."""
+    src_root = SKILLS_DIR / skill
+    if not src_root.is_dir():
+        _err(f"Skill source missing: {src_root}")
+        sys.exit(1)
+    for path in sorted(src_root.rglob("*")):
+        if path.is_file():
+            yield path, path.relative_to(src_root)
 
 
 # ── Installer ─────────────────────────────────────────────────────────────────
@@ -199,19 +213,31 @@ def _needs_upgrade(tool: str, manifest: dict) -> bool:
     return manifest.get(_version_key(tool)) != VERSION
 
 
-def install_file(key: str, src: Path, dest: Path, manifest: dict, force: bool = False) -> bool:
-    new_content = src.read_text()
-    checksum    = _sha256(new_content)
+def install_file(key: str, src: Path, dest: Path, manifest: dict, force: bool) -> bool:
+    new_bytes = src.read_bytes()
+    checksum  = _sha256(new_bytes)
 
     if not force and dest.exists() and manifest.get(key) == checksum:
         _info(f"no change   {dest.relative_to(WORKSPACE)}")
         return False
 
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(new_content)
+    dest.write_bytes(new_bytes)
     manifest[key] = checksum
     _ok(str(dest.relative_to(WORKSPACE)))
     return True
+
+
+def _cleanup_legacy(tool: str) -> None:
+    """Remove flat command/prompt files from pre-0.1.0 installs."""
+    for rel in LEGACY_PATHS.get(tool, []):
+        target = WORKSPACE / rel
+        if target.is_dir():
+            shutil.rmtree(target)
+            _warn(f"Removed legacy {rel}")
+        elif target.is_file():
+            target.unlink()
+            _warn(f"Removed legacy {rel}")
 
 
 def install_tool(tool: str, manifest: dict) -> None:
@@ -223,10 +249,16 @@ def install_tool(tool: str, manifest: dict) -> None:
     elif upgrade:
         _info(f"Installing skills v{VERSION}")
 
+    if upgrade:
+        _cleanup_legacy(tool)
+
+    root = TOOL_ROOT[tool]
     changed = False
-    for src, dest in TOOL_FILES[tool]:
-        key = f"{tool}:{src.relative_to(SKILLS_DIR)}"
-        changed = changed | install_file(key, src, dest, manifest, force=upgrade)
+    for skill in SKILLS:
+        for src, rel in _iter_skill_files(skill):
+            dest = WORKSPACE / root / skill / rel
+            key  = f"{tool}:{skill}/{rel.as_posix()}"
+            changed = install_file(key, src, dest, manifest, force=upgrade) or changed
 
     manifest[_version_key(tool)] = VERSION
 
@@ -237,38 +269,34 @@ def install_tool(tool: str, manifest: dict) -> None:
 # ── Destroy ───────────────────────────────────────────────────────────────────
 
 def _cleanup_empty_dirs(start: Path) -> None:
-    """Walk up from start toward WORKSPACE, removing each directory if it is empty.
-    Stops as soon as a non-empty directory is encountered, or when WORKSPACE is reached.
-    Never removes the workspace root itself."""
+    """Walk up from start toward WORKSPACE, removing each directory only if it
+    is empty. Stops at the first non-empty directory and never removes the
+    workspace root. This is what keeps sibling skills from other sources safe:
+    the shared skills root (.claude/skills, .github/skills) is only removed if
+    nothing else lives in it."""
     d = start
     while d != WORKSPACE and d != d.parent:
         try:
-            d.rmdir()                                            # succeeds only when empty
+            d.rmdir()                                # succeeds only when empty
             _info(f"Removed empty dir  {d.relative_to(WORKSPACE)}")
             d = d.parent
         except OSError:
-            break                                                # not empty — stop walking up
+            break                                    # not empty — stop walking up
 
 
 def destroy_tool(tool: str, manifest: dict) -> None:
-    """Remove exactly the files placed by install_tool, then clean up any directories
-    that became empty as a result. Directories that contain other files are left alone."""
-    dirs_to_check: list[Path] = []
-
-    for src, dest in TOOL_FILES[tool]:
-        if dest.exists():
-            dest.unlink()
-            _ok(f"Removed  {dest.relative_to(WORKSPACE)}")
-        # Collect unique parent dirs in order (innermost first)
-        if dest.parent not in dirs_to_check:
-            dirs_to_check.append(dest.parent)
-
-    # Walk up from each parent directory, removing empty ones
-    visited: set[Path] = set()
-    for d in dirs_to_check:
-        if d not in visited:
-            visited.add(d)
-            _cleanup_empty_dirs(d)
+    """Remove ONLY the skill folders api-probe owns, then clean up directories
+    that became empty as a result. A shared skills root holding other skills is
+    left untouched."""
+    root = TOOL_ROOT[tool]
+    for skill in SKILLS:
+        skill_dir = WORKSPACE / root / skill
+        if skill_dir.exists():
+            shutil.rmtree(skill_dir)
+            _ok(f"Removed  {skill_dir.relative_to(WORKSPACE)}")
+        # Try to tidy the (possibly now-empty) shared root — no-op if other
+        # skills remain inside it.
+        _cleanup_empty_dirs(WORKSPACE / root)
 
     for key in [k for k in manifest if k.startswith(f"{tool}:")]:
         del manifest[key]
@@ -279,7 +307,7 @@ def destroy() -> None:
 
     manifest = _load_manifest()
 
-    installed = [(t, l) for t, l in TOOLS if manifest.get(_version_key(t))]
+    installed = [(t, TOOL_LABEL[t]) for t, _, _ in TOOLS if manifest.get(_version_key(t))]
     if not installed:
         _info("No api-probe skills are installed in this project.")
         return
@@ -287,12 +315,13 @@ def destroy() -> None:
     print("  The following will be removed:\n")
     for tool, label in installed:
         print(f"  {BOLD}{label}{RESET}")
-        for src, dest in TOOL_FILES[tool]:
-            if dest.exists():
-                print(f"    • {dest.relative_to(WORKSPACE)}")
+        for skill in SKILLS:
+            skill_dir = WORKSPACE / TOOL_ROOT[tool] / skill
+            if skill_dir.exists():
+                print(f"    • {skill_dir.relative_to(WORKSPACE)}/")
     print()
 
-    confirm = _select("Remove these files?", [
+    confirm = _select("Remove these skill folders?", [
         ("yes", "Yes, remove api-probe skills"),
         ("no",  "No, cancel"),
     ])
@@ -316,7 +345,6 @@ def destroy() -> None:
                 [("yes", "Yes, remove .api-probe/"), ("no", "Keep .api-probe/")],
             )
             if confirm2 == "yes":
-                import shutil
                 shutil.rmtree(api_probe_dir)
                 _ok("Removed .api-probe/")
         else:
@@ -340,7 +368,10 @@ def main():
     project_type = detect_project()
     _ok(f"Project detected: {BOLD}{project_type}{RESET}")
 
-    selected = _select("Which AI tool would you like to configure?", TOOLS)
+    selected = _select(
+        "Which AI tool would you like to configure?",
+        [(key, label) for key, label, _ in TOOLS],
+    )
 
     manifest = _load_manifest()
     print(f"  Installing ...\n")
