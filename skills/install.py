@@ -7,6 +7,8 @@ project, in the format expected by each AI tool.
 
 Usage:
     api-probe init      # detect project, choose a tool, install/upgrade skills
+    api-probe update    # re-sync installed skills with the bundled source,
+                        #   rewriting any file whose on-disk content has drifted
     api-probe destroy   # remove api-probe skills (only the folders we own)
 """
 
@@ -266,6 +268,88 @@ def install_tool(tool: str, manifest: dict) -> None:
         print(f"\n  Already up to date (v{VERSION}).")
 
 
+# ── Update ────────────────────────────────────────────────────────────────────
+#
+# `init` decides whether to rewrite a file by trusting the manifest. `update`
+# trusts nothing: it hashes the file actually sitting on disk and compares it to
+# the bundled source, so it also repairs drift the manifest wouldn't catch — a
+# hand-edited SKILL.md, a corrupted or half-written file, a reference someone
+# deleted. Only files api-probe owns are touched.
+
+def update_file(key: str, src: Path, dest: Path, manifest: dict) -> bool:
+    new_bytes = src.read_bytes()
+    checksum  = _sha256(new_bytes)
+
+    # Compare against the real on-disk content, not the manifest.
+    if dest.exists() and _sha256(dest.read_bytes()) == checksum:
+        manifest[key] = checksum            # keep the manifest honest
+        _info(f"up to date  {dest.relative_to(WORKSPACE)}")
+        return False
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(new_bytes)
+    manifest[key] = checksum
+    _ok(f"refreshed   {dest.relative_to(WORKSPACE)}")
+    return True
+
+
+def update_tool(tool: str, manifest: dict) -> bool:
+    """Bring every file api-probe owns for this tool back in line with the
+    bundled source. Returns True if anything was rewritten."""
+    _cleanup_legacy(tool)
+
+    root = TOOL_ROOT[tool]
+    source_keys: set[str] = set()
+    changed = False
+    for skill in SKILLS:
+        for src, rel in _iter_skill_files(skill):
+            dest = WORKSPACE / root / skill / rel
+            key  = f"{tool}:{skill}/{rel.as_posix()}"
+            source_keys.add(key)
+            changed = update_file(key, src, dest, manifest) or changed
+
+    # Prune files this tool installed in a previous version that no longer exist
+    # in the source (e.g. a reference that was renamed or removed upstream).
+    for key in [k for k in manifest
+                if k.startswith(f"{tool}:") and not k.endswith(":version")
+                and k not in source_keys]:
+        rel = key.split(":", 1)[1]
+        stale = WORKSPACE / root / rel
+        if stale.exists():
+            stale.unlink()
+            _warn(f"Removed stale  {stale.relative_to(WORKSPACE)}")
+            _cleanup_empty_dirs(stale.parent)
+        del manifest[key]
+        changed = True
+
+    manifest[_version_key(tool)] = VERSION
+    return changed
+
+
+def update() -> None:
+    _header("api-probe update")
+
+    manifest  = _load_manifest()
+    installed = [(t, TOOL_LABEL[t]) for t, _, _ in TOOLS if manifest.get(_version_key(t))]
+    if not installed:
+        _info("No api-probe skills are installed in this project.")
+        _info("Run `api-probe init` first.")
+        return
+
+    any_changed = False
+    for tool, label in installed:
+        print(f"  {BOLD}{label}{RESET}")
+        if update_tool(tool, manifest):
+            any_changed = True
+        print()
+
+    _save_manifest(manifest)
+
+    if not any_changed:
+        print(f"  Everything already matches the bundled skills (v{VERSION}).")
+    _header("Done")
+
+
 # ── Destroy ───────────────────────────────────────────────────────────────────
 
 def _cleanup_empty_dirs(start: Path) -> None:
@@ -361,6 +445,10 @@ def main():
 
     if cmd == "destroy":
         destroy()
+        return
+
+    if cmd == "update":
+        update()
         return
 
     _header("api-probe skill installer")

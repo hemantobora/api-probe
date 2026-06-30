@@ -99,6 +99,15 @@ Present a short summary (endpoint count, auth type, API type, any grouping oppor
 - Ask only one question per message. Wait for a response before continuing.
 - If the user says **continue** or **resume** without answering, re-ask the same question.
 
+**Use the host's native question UI when it offers one.** These questions are about *intent*, not *presentation* — render each one with the richest input mechanism the environment actually exposes, and fall back to plain text otherwise. You can't draw UI yourself; you can only use what the host provides. In rough order of preference:
+
+- A **structured question / choice tool** (e.g. a multiple-choice prompt that returns the user's pick) — ideal for the single-answer questions (auth type in Q3, single-vs-multiple executions in Q5). Use it when the host exposes one.
+- A **multi-select picker** (e.g. VS Code QuickPick) — ideal for endpoint selection in Q1.
+- A **confirmation prompt** (proceed / cancel) — fine for yes/no gates.
+- **Plain text** — the universal fallback. Always works; use it when none of the above exist, and never fake a clickable control in plain text.
+
+This keeps the skill portable: the same questions surface as slick widgets in a capable host (Cowork's question card, VS Code's pickers) and as readable prose everywhere else.
+
 ### Q1 — Endpoint selection
 *Ask only if more than one endpoint was found.* First ask whether to proceed with everything or pick a subset:
 
@@ -144,17 +153,17 @@ If custom, ask for the path. Save the choice to `.api-probe/config.yaml`.
 
 ### Q5 — Executions
 *Always ask.*
-> "Would you like to run probes in a single execution or multiple executions? An execution is a sandboxed running context with its own variables.
-> ▸ Single execution
-> ▸ Multiple executions (e.g. staging + production, or multiple tenants)"
+> "Should these probes run once, or repeat under multiple execution contexts? An execution is an isolated run with its own variables — its primary use is exercising the *same* endpoints as different **users / accounts / tenants** (e.g. an admin vs a basic user, customer A vs customer B), to confirm the API behaves correctly for each. Differing environments like staging vs production is technically possible, but it's the weaker use — comparing responses across environments rarely tells you much.
+> ▸ Single run
+> ▸ Multiple execution contexts (different users, accounts, or tenants)"
 
-If multiple, ask how many, what to name each, and their base URLs.
+If multiple, ask how many, what to name each, and **which variables differ per context** (user ID, account, API key/token). A base URL can be one of those variables if it genuinely differs, but it isn't the point — the value is the same endpoints under different identities/data.
 
 ### Q6 — Validation review
-*Always ask — this is the most important question before generating.* Present a concrete per-probe validation plan (status, body.present, body.absent, body.equals, body.type per probe) and ask the user to confirm, adjust, or add. Do not ask open-ended — show your work. See [`references/validation.md`](references/validation.md) for the validator catalogue and a worked example. Wait for the response before generating; "looks good" / "proceed" means use the plan as-is.
+*Always ask — this is the most important question before generating.* Present a concrete per-probe validation plan and ask the user to confirm, adjust, or add. Do not ask open-ended — show your work. Crucially, go beyond `status`/`present`/`type`: surface the **value-level assertions** (`equals`, `matches`, `range`, `length`, `contains`) that make api-probe worth running, including the best-guess ones you've inferred from the code and intend to emit commented-out for the user to confirm. See [`references/validation.md`](references/validation.md) for the catalogue, the value-level scaffolding guidance, and worked examples. Wait for the response before generating; "looks good" / "proceed" means use the plan as-is.
 
-### Q7 — Execution-specific validation differences
-*Ask only if Q5 = multiple executions.* Ask what differs between executions (e.g. stricter response time in prod, extra field checks, relaxed status in staging). If differences exist, generate a separate `validations/[env].yaml` per execution and wire with `validations: !include validations/[env].yaml` — a total replacement per probe; unlisted probes fall back to inline `validation:`.
+### Q7 — Context-specific validation differences
+*Ask only if Q5 = multiple execution contexts.* Ask whether the **expected response differs per context** — this is where contexts pay off: same probe, context-specific assertions. Examples: an admin context returns extra fields a basic user must not see; user A's response must contain A's own ID/email, not B's; a premium tenant has a higher rate-limit or quota field. If differences exist, generate a separate `validations/[context].yaml` per execution and wire with `validations: !include validations/[context].yaml` — a total replacement per probe; unlisted probes fall back to inline `validation:`.
 
 ### Q8 — Any other constraints
 *Always ask last.*

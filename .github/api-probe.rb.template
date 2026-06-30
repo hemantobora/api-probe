@@ -18,6 +18,9 @@ class ApiProbe < Formula
         init)
           exec python3 "#{libexec}/skills/install.py" init
           ;;
+        update)
+          exec python3 "#{libexec}/skills/install.py" update
+          ;;
         destroy)
           exec python3 "#{libexec}/skills/install.py" destroy
           ;;
@@ -29,6 +32,7 @@ class ApiProbe < Formula
           echo ""
           echo "Commands:"
           echo "  init        Install AI skills for this project"
+          echo "  update      Re-sync installed skills with this version"
           echo "  destroy     Remove AI skills installed by init"
           echo ""
           echo "Options:"

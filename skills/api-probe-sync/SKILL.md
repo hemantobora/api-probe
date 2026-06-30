@@ -16,7 +16,7 @@ Sync an existing probe file with an updated API collection, preserving all devel
 
 - If the user says **stop**, **exit**, or **terminate** at any point, stop immediately. Do not write any changes.
 - If the user says **continue** or **resume** and you were waiting for a response, re-ask the same question — do not skip it.
-- Never ask the user to reply with numbers. Always present visual lists or checkbox tables and accept natural language responses.
+- Never ask the user to reply with numbers. Present a plain list and accept natural-language answers. When the host exposes a native picker or choice tool (e.g. VS Code QuickPick, a multiple-choice prompt), prefer it for the file-selection menu in Step 0 — you can't draw UI yourself, only use what the host provides. In plain chat, use a plain list with no checkbox glyphs (a chat list isn't clickable, so ☑ would mislead).
 
 ---
 

@@ -48,7 +48,36 @@ Richly validated example:
         items: [1, null]    # at least 1 item
 ```
 
-If a field's value or type is unknown: include `present` only and add `# TODO: add type/equals after first test run`.
+## Value-level assertions are where api-probe earns its keep
+
+`status` and `present` only prove an endpoint responds with the right *shape*. The real signal comes from asserting actual *values* — `equals`, `matches`, `range`, `length`, `contains`. These catch logic regressions a shape check sails straight past: a wrong total, a stale status enum, a malformed ID, an out-of-range price, an admin field leaking to a basic user.
+
+You usually won't know the exact runtime value — but you can almost always make an informed guess from the code, and that guess is worth capturing. Emit confident inferences live; emit best-guesses **commented out with a one-line reason**, so the developer only has to uncomment and confirm rather than author the assertion from scratch. A commented `range: score: [0, 100]` they can accept in seconds is far more useful than an empty `# TODO`.
+
+Read the source for:
+
+- **`equals`** — enums, constants, default values, status literals (`"active"`, `"pending"`), booleans, fixed config. Also any field that should echo an input variable (`id == ${ORDER_ID}`).
+- **`matches`** — fields with an obvious format: UUID, email, ISO-8601 timestamp, slug, currency code, phone. Emit the regex.
+- **`range`** — numeric fields with inferable bounds: a percentage (0–100), a non-negative price or quantity, a page size, an age.
+- **`length`** — arrays with a known min/max, or fixed-length codes.
+- **`contains`** — required substrings or array members.
+
+```yaml
+validation:
+  status: 200
+  body:
+    present: ["id", "email", "status", "createdAt", "score"]
+    equals:
+      status: "active"             # enum default in UserStatus.java
+    matches:
+      id: "^[0-9a-f-]{36}$"         # looks like a UUID (PK in the schema)
+      email: "^[^@]+@[^@]+\\.[^@]+$"
+      # createdAt: "^\\d{4}-\\d{2}-\\d{2}T"   # ISO-8601 — uncomment if confirmed
+    # range:
+    #   score: [0, 100]            # guessed bounds — confirm actual range
+```
+
+Rule of thumb: prefer a commented plausible assertion over omitting one. If you genuinely can't even guess a field's value or type, list it under `present` only.
 
 ## Externalise large bodies and validations with `!include`
 
@@ -165,6 +194,7 @@ delay: 1    # seconds to wait before executing this probe
 - [ ] Names are meaningful — no raw paths
 - [ ] Validation is per-probe, derived from individual response schema
 - [ ] All applicable validators used per probe (present, absent, equals, type, etc.)
+- [ ] Value-level assertions (equals/matches/range/length) inferred from code — confident ones live, best-guesses emitted commented with a one-line reason
 - [ ] `response_time` only where explicitly known
 - [ ] Large bodies use `!include` (not inline)
 - [ ] Large probe validations use `!include` (not inline)
